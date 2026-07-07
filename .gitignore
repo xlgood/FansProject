@@ -1,0 +1,32 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+vendor/
+
+# Builds
+dist/
+build/
+.output/
+.next/
+
+# Logs
+*.log
+logs/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Runtime data
+tmp/
+cache/
+*.sqlite
+*.sqlite3
+
+# Upstream source checkouts should stay outside this repo unless explicitly approved.
+dujiao-next/
