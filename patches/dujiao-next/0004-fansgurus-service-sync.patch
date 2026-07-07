@@ -1,0 +1,622 @@
+diff --git a/internal/repository/fansgurus_repository.go b/internal/repository/fansgurus_repository.go
+new file mode 100644
+index 0000000..9403ace
+--- /dev/null
++++ b/internal/repository/fansgurus_repository.go
+@@ -0,0 +1,102 @@
++package repository
++
++import (
++	"errors"
++	"time"
++
++	"github.com/dujiao-next/internal/models"
++
++	"gorm.io/gorm"
++)
++
++type FansgurusServiceMappingRepository interface {
++	GetByConnectionAndServiceID(connectionID, serviceID uint) (*models.FansgurusServiceMapping, error)
++	ListByConnection(connectionID uint) ([]models.FansgurusServiceMapping, error)
++	Create(mapping *models.FansgurusServiceMapping) error
++	Update(mapping *models.FansgurusServiceMapping) error
++	MarkMissingInactive(connectionID uint, seenServiceIDs []uint, now time.Time) (int64, error)
++}
++
++type GormFansgurusServiceMappingRepository struct {
++	db *gorm.DB
++}
++
++func NewFansgurusServiceMappingRepository(db *gorm.DB) *GormFansgurusServiceMappingRepository {
++	return &GormFansgurusServiceMappingRepository{db: db}
++}
++
++func (r *GormFansgurusServiceMappingRepository) GetByConnectionAndServiceID(connectionID, serviceID uint) (*models.FansgurusServiceMapping, error) {
++	var mapping models.FansgurusServiceMapping
++	if err := r.db.Where("connection_id = ? AND upstream_service_id = ?", connectionID, serviceID).First(&mapping).Error; err != nil {
++		if errors.Is(err, gorm.ErrRecordNotFound) {
++			return nil, nil
++		}
++		return nil, err
++	}
++	return &mapping, nil
++}
++
++func (r *GormFansgurusServiceMappingRepository) ListByConnection(connectionID uint) ([]models.FansgurusServiceMapping, error) {
++	var mappings []models.FansgurusServiceMapping
++	if err := r.db.Where("connection_id = ?", connectionID).Order("upstream_service_id ASC").Find(&mappings).Error; err != nil {
++		return nil, err
++	}
++	return mappings, nil
++}
++
++func (r *GormFansgurusServiceMappingRepository) Create(mapping *models.FansgurusServiceMapping) error {
++	return r.db.Create(mapping).Error
++}
++
++func (r *GormFansgurusServiceMappingRepository) Update(mapping *models.FansgurusServiceMapping) error {
++	return r.db.Save(mapping).Error
++}
++
++func (r *GormFansgurusServiceMappingRepository) MarkMissingInactive(connectionID uint, seenServiceIDs []uint, now time.Time) (int64, error) {
++	query := r.db.Model(&models.FansgurusServiceMapping{}).
++		Where("connection_id = ? AND is_active = ?", connectionID, true)
++	if len(seenServiceIDs) > 0 {
++		query = query.Where("upstream_service_id NOT IN ?", seenServiceIDs)
++	}
++	result := query.Updates(map[string]interface{}{
++		"is_active":  false,
++		"updated_at": now,
++	})
++	if result.Error != nil {
++		return 0, result.Error
++	}
++	return result.RowsAffected, nil
++}
++
++type FansgurusSyncRunRepository interface {
++	Create(run *models.FansgurusSyncRun) error
++	Update(run *models.FansgurusSyncRun) error
++	GetByID(id uint) (*models.FansgurusSyncRun, error)
++}
++
++type GormFansgurusSyncRunRepository struct {
++	db *gorm.DB
++}
++
++func NewFansgurusSyncRunRepository(db *gorm.DB) *GormFansgurusSyncRunRepository {
++	return &GormFansgurusSyncRunRepository{db: db}
++}
++
++func (r *GormFansgurusSyncRunRepository) Create(run *models.FansgurusSyncRun) error {
++	return r.db.Create(run).Error
++}
++
++func (r *GormFansgurusSyncRunRepository) Update(run *models.FansgurusSyncRun) error {
++	return r.db.Save(run).Error
++}
++
++func (r *GormFansgurusSyncRunRepository) GetByID(id uint) (*models.FansgurusSyncRun, error) {
++	var run models.FansgurusSyncRun
++	if err := r.db.First(&run, id).Error; err != nil {
++		if errors.Is(err, gorm.ErrRecordNotFound) {
++			return nil, nil
++		}
++		return nil, err
++	}
++	return &run, nil
++}
+diff --git a/internal/repository/fansgurus_repository_test.go b/internal/repository/fansgurus_repository_test.go
+new file mode 100644
+index 0000000..6a6ac82
+--- /dev/null
++++ b/internal/repository/fansgurus_repository_test.go
+@@ -0,0 +1,67 @@
++package repository
++
++import (
++	"testing"
++	"time"
++
++	"github.com/dujiao-next/internal/models"
++
++	"github.com/glebarez/sqlite"
++	"gorm.io/gorm"
++)
++
++func TestFansgurusServiceMappingRepositoryMarkMissingInactive(t *testing.T) {
++	db, err := gorm.Open(sqlite.Open("file:fansgurus_repo?mode=memory&cache=shared"), &gorm.Config{})
++	if err != nil {
++		t.Fatalf("open db: %v", err)
++	}
++	if err := db.AutoMigrate(&models.FansgurusServiceMapping{}); err != nil {
++		t.Fatalf("migrate: %v", err)
++	}
++
++	repo := NewFansgurusServiceMappingRepository(db)
++	now := time.Now()
++	for _, serviceID := range []uint{101, 102, 201} {
++		if err := repo.Create(&models.FansgurusServiceMapping{
++			ConnectionID:      1,
++			UpstreamServiceID: serviceID,
++			ServiceName:       "service",
++			IsActive:          true,
++			LastSeenAt:        &now,
++		}); err != nil {
++			t.Fatalf("create mapping: %v", err)
++		}
++	}
++	if err := repo.Create(&models.FansgurusServiceMapping{
++		ConnectionID:      2,
++		UpstreamServiceID: 301,
++		ServiceName:       "other connection",
++		IsActive:          true,
++		LastSeenAt:        &now,
++	}); err != nil {
++		t.Fatalf("create other mapping: %v", err)
++	}
++
++	changed, err := repo.MarkMissingInactive(1, []uint{101, 201}, time.Now())
++	if err != nil {
++		t.Fatalf("MarkMissingInactive: %v", err)
++	}
++	if changed != 1 {
++		t.Fatalf("changed=%d, want 1", changed)
++	}
++
++	missing, err := repo.GetByConnectionAndServiceID(1, 102)
++	if err != nil {
++		t.Fatalf("get missing: %v", err)
++	}
++	if missing == nil || missing.IsActive {
++		t.Fatalf("expected service 102 inactive, got %+v", missing)
++	}
++	other, err := repo.GetByConnectionAndServiceID(2, 301)
++	if err != nil {
++		t.Fatalf("get other: %v", err)
++	}
++	if other == nil || !other.IsActive {
++		t.Fatalf("expected other connection untouched, got %+v", other)
++	}
++}
+diff --git a/internal/service/fansgurus_sync.go b/internal/service/fansgurus_sync.go
+new file mode 100644
+index 0000000..66e0e3c
+--- /dev/null
++++ b/internal/service/fansgurus_sync.go
+@@ -0,0 +1,232 @@
++package service
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"strings"
++	"time"
++
++	"github.com/dujiao-next/internal/constants"
++	"github.com/dujiao-next/internal/models"
++	"github.com/dujiao-next/internal/repository"
++	"github.com/dujiao-next/internal/upstream"
++
++	"github.com/shopspring/decimal"
++)
++
++var (
++	ErrFansgurusConnectionInvalid = errors.New("fansgurus connection is invalid")
++	ErrFansgurusSyncClientMissing = errors.New("fansgurus sync client is missing")
++)
++
++type FansgurusServiceClient interface {
++	ListServices(ctx context.Context) ([]upstream.FansgurusService, error)
++}
++
++type FansgurusClientFactory func(conn *models.SiteConnection, decryptedSecret string) FansgurusServiceClient
++
++type FansgurusSyncService struct {
++	connService *SiteConnectionService
++	mappingRepo repository.FansgurusServiceMappingRepository
++	runRepo     repository.FansgurusSyncRunRepository
++	clientFor   FansgurusClientFactory
++}
++
++func NewFansgurusSyncService(
++	connService *SiteConnectionService,
++	mappingRepo repository.FansgurusServiceMappingRepository,
++	runRepo repository.FansgurusSyncRunRepository,
++) *FansgurusSyncService {
++	return &FansgurusSyncService{
++		connService: connService,
++		mappingRepo: mappingRepo,
++		runRepo:     runRepo,
++		clientFor: func(conn *models.SiteConnection, decryptedSecret string) FansgurusServiceClient {
++			return upstream.NewFansgurusClient(conn.BaseURL, decryptedSecret)
++		},
++	}
++}
++
++func (s *FansgurusSyncService) SetClientFactory(factory FansgurusClientFactory) {
++	if factory != nil {
++		s.clientFor = factory
++	}
++}
++
++func (s *FansgurusSyncService) SyncConnection(ctx context.Context, connectionID uint) (*models.FansgurusSyncRun, error) {
++	if s == nil || s.connService == nil || s.mappingRepo == nil || s.runRepo == nil || s.clientFor == nil {
++		return nil, ErrFansgurusSyncClientMissing
++	}
++
++	conn, err := s.connService.GetByID(connectionID)
++	if err != nil {
++		return nil, err
++	}
++	if conn == nil {
++		return nil, ErrConnectionNotFound
++	}
++	if strings.TrimSpace(conn.Protocol) != constants.ConnectionProtocolFansgurus {
++		return nil, ErrFansgurusConnectionInvalid
++	}
++
++	run := &models.FansgurusSyncRun{
++		ConnectionID: connectionID,
++		Status:       models.FansgurusSyncStatusRunning,
++		StartedAt:    time.Now(),
++	}
++	if err := s.runRepo.Create(run); err != nil {
++		return nil, err
++	}
++
++	if err := s.syncWithRun(ctx, conn, run); err != nil {
++		finished := time.Now()
++		run.Status = models.FansgurusSyncStatusFailed
++		run.FinishedAt = &finished
++		run.ErrorMessage = err.Error()
++		_ = s.runRepo.Update(run)
++		return run, err
++	}
++
++	finished := time.Now()
++	run.Status = models.FansgurusSyncStatusSucceeded
++	run.FinishedAt = &finished
++	if err := s.runRepo.Update(run); err != nil {
++		return nil, err
++	}
++	return run, nil
++}
++
++func (s *FansgurusSyncService) syncWithRun(ctx context.Context, conn *models.SiteConnection, run *models.FansgurusSyncRun) error {
++	decrypted, err := s.connService.decryptSecret(conn)
++	if err != nil {
++		return err
++	}
++	client := s.clientFor(conn, decrypted)
++	if client == nil {
++		return ErrFansgurusSyncClientMissing
++	}
++
++	services, err := client.ListServices(ctx)
++	if err != nil {
++		return err
++	}
++	run.ResponseBytes = estimateFansgurusResponseBytes(services)
++
++	now := time.Now()
++	seen := make([]uint, 0, len(services))
++	for _, service := range services {
++		run.FetchedCount++
++		seen = append(seen, service.Service)
++		if !IsFansgurusServiceTypeSupported(service.Type) {
++			run.UnsupportedCount++
++			continue
++		}
++		if err := s.upsertServiceMapping(conn.ID, service, now, run); err != nil {
++			run.ErrorCount++
++			return err
++		}
++	}
++
++	count, err := s.mappingRepo.MarkMissingInactive(conn.ID, seen, now)
++	if err != nil {
++		run.ErrorCount++
++		return err
++	}
++	run.DeactivatedCount += int(count)
++	return nil
++}
++
++func (s *FansgurusSyncService) upsertServiceMapping(connectionID uint, service upstream.FansgurusService, now time.Time, run *models.FansgurusSyncRun) error {
++	upstreamRate, err := decimal.NewFromString(strings.TrimSpace(service.Rate))
++	if err != nil {
++		return fmt.Errorf("parse fansgurus rate for service %d: %w", service.Service, err)
++	}
++	if upstreamRate.IsNegative() {
++		upstreamRate = decimal.Zero
++	}
++
++	payload := fansgurusServicePayload(service)
++	hash, err := FansgurusContentHash(payload)
++	if err != nil {
++		return err
++	}
++
++	mapping, err := s.mappingRepo.GetByConnectionAndServiceID(connectionID, service.Service)
++	if err != nil {
++		return err
++	}
++	if mapping == nil {
++		mapping = &models.FansgurusServiceMapping{
++			ConnectionID:      connectionID,
++			UpstreamServiceID: service.Service,
++			PurchaseEnabled:   false,
++			CreatedAt:         now,
++		}
++		applyFansgurusServiceMapping(mapping, service, upstreamRate, payload, hash, now)
++		if err := s.mappingRepo.Create(mapping); err != nil {
++			return err
++		}
++		run.CreatedCount++
++		return nil
++	}
++
++	changed := !mapping.IsActive || mapping.ContentHash != hash || mapping.ServiceType != strings.TrimSpace(service.Type)
++	applyFansgurusServiceMapping(mapping, service, upstreamRate, payload, hash, now)
++	if err := s.mappingRepo.Update(mapping); err != nil {
++		return err
++	}
++	if changed {
++		run.UpdatedCount++
++	}
++	return nil
++}
++
++func applyFansgurusServiceMapping(
++	mapping *models.FansgurusServiceMapping,
++	service upstream.FansgurusService,
++	upstreamRate decimal.Decimal,
++	payload models.JSON,
++	hash string,
++	now time.Time,
++) {
++	mapping.CategoryName = strings.TrimSpace(service.Category)
++	mapping.ServiceName = strings.TrimSpace(service.Name)
++	mapping.ServiceType = strings.TrimSpace(service.Type)
++	mapping.UpstreamRate = models.NewMoneyFromDecimal(upstreamRate)
++	mapping.SellRate = models.NewMoneyFromDecimal(CalculateFansgurusSellRate(upstreamRate))
++	mapping.MinQuantity = service.Min
++	mapping.MaxQuantity = service.Max
++	mapping.SupportsDripfeed = service.Dripfeed
++	mapping.SupportsRefill = service.Refill
++	mapping.SupportsCancel = service.Cancel
++	mapping.RawPayloadJSON = payload
++	mapping.ContentHash = hash
++	mapping.IsActive = true
++	mapping.LastSeenAt = &now
++	mapping.UpdatedAt = now
++}
++
++func fansgurusServicePayload(service upstream.FansgurusService) models.JSON {
++	return models.JSON{
++		"service":  service.Service,
++		"name":     service.Name,
++		"type":     service.Type,
++		"rate":     service.Rate,
++		"min":      service.Min,
++		"max":      service.Max,
++		"dripfeed": service.Dripfeed,
++		"refill":   service.Refill,
++		"cancel":   service.Cancel,
++		"category": service.Category,
++	}
++}
++
++func estimateFansgurusResponseBytes(services []upstream.FansgurusService) int64 {
++	body, err := json.Marshal(services)
++	if err != nil {
++		return 0
++	}
++	return int64(len(body))
++}
+diff --git a/internal/service/fansgurus_sync_test.go b/internal/service/fansgurus_sync_test.go
+new file mode 100644
+index 0000000..ecda41d
+--- /dev/null
++++ b/internal/service/fansgurus_sync_test.go
+@@ -0,0 +1,197 @@
++package service
++
++import (
++	"context"
++	"testing"
++	"time"
++
++	"github.com/dujiao-next/internal/constants"
++	"github.com/dujiao-next/internal/crypto"
++	"github.com/dujiao-next/internal/models"
++	"github.com/dujiao-next/internal/repository"
++	"github.com/dujiao-next/internal/upstream"
++
++	"github.com/glebarez/sqlite"
++	"github.com/shopspring/decimal"
++	"gorm.io/gorm"
++)
++
++type fakeFansgurusClient struct {
++	services []upstream.FansgurusService
++	err      error
++}
++
++func (c *fakeFansgurusClient) ListServices(ctx context.Context) ([]upstream.FansgurusService, error) {
++	if c.err != nil {
++		return nil, c.err
++	}
++	return c.services, nil
++}
++
++func TestFansgurusSyncServiceCreatesUpdatesAndDeactivatesMappings(t *testing.T) {
++	svc, mappingRepo, runRepo, db := setupFansgurusSyncTest(t)
++	conn := createFansgurusConnection(t, db, 1)
++	now := time.Now().Add(-time.Hour)
++	if err := mappingRepo.Create(&models.FansgurusServiceMapping{
++		ConnectionID:      conn.ID,
++		UpstreamServiceID: 900,
++		ServiceName:       "Old service",
++		ServiceType:       FansgurusServiceTypeDefault,
++		IsActive:          true,
++		LastSeenAt:        &now,
++	}); err != nil {
++		t.Fatalf("create stale mapping: %v", err)
++	}
++	if err := mappingRepo.Create(&models.FansgurusServiceMapping{
++		ConnectionID:      conn.ID,
++		UpstreamServiceID: 100,
++		ServiceName:       "Old name",
++		ServiceType:       FansgurusServiceTypeDefault,
++		IsActive:          true,
++		LastSeenAt:        &now,
++		ContentHash:       "old",
++	}); err != nil {
++		t.Fatalf("create existing mapping: %v", err)
++	}
++
++	svc.SetClientFactory(func(conn *models.SiteConnection, secret string) FansgurusServiceClient {
++		if secret != "plain-secret" {
++			t.Fatalf("secret=%s, want decrypted secret", secret)
++		}
++		return &fakeFansgurusClient{services: []upstream.FansgurusService{
++			{
++				Service:  100,
++				Name:     "Telegram Members",
++				Type:     FansgurusServiceTypeDefault,
++				Rate:     "0.30",
++				Min:      100,
++				Max:      10000,
++				Refill:   true,
++				Category: "Telegram",
++			},
++			{
++				Service:  200,
++				Name:     "Instagram Comments",
++				Type:     FansgurusServiceTypeCustomComments,
++				Rate:     "1.25",
++				Min:      10,
++				Max:      1000,
++				Category: "Instagram",
++			},
++			{
++				Service:  300,
++				Name:     "Unsupported",
++				Type:     "Subscriptions",
++				Rate:     "1.00",
++				Category: "Other",
++			},
++		}}
++	})
++
++	run, err := svc.SyncConnection(context.Background(), conn.ID)
++	if err != nil {
++		t.Fatalf("SyncConnection: %v", err)
++	}
++	if run.Status != models.FansgurusSyncStatusSucceeded {
++		t.Fatalf("status=%s, want succeeded", run.Status)
++	}
++	if run.FetchedCount != 3 || run.CreatedCount != 1 || run.UpdatedCount != 1 || run.UnsupportedCount != 1 || run.DeactivatedCount != 1 {
++		t.Fatalf("unexpected counters: %+v", run)
++	}
++
++	created, err := mappingRepo.GetByConnectionAndServiceID(conn.ID, 200)
++	if err != nil {
++		t.Fatalf("get created: %v", err)
++	}
++	if created == nil || !created.IsActive || !created.SellRate.Decimal.Equal(created.UpstreamRate.Decimal.Mul(decimal.NewFromInt(10))) {
++		t.Fatalf("unexpected created mapping: %+v", created)
++	}
++	if created.PurchaseEnabled {
++		t.Fatalf("new mappings should not be purchase enabled by default")
++	}
++
++	updated, err := mappingRepo.GetByConnectionAndServiceID(conn.ID, 100)
++	if err != nil {
++		t.Fatalf("get updated: %v", err)
++	}
++	if updated == nil || updated.ServiceName != "Telegram Members" || !updated.SupportsRefill {
++		t.Fatalf("unexpected updated mapping: %+v", updated)
++	}
++
++	stale, err := mappingRepo.GetByConnectionAndServiceID(conn.ID, 900)
++	if err != nil {
++		t.Fatalf("get stale: %v", err)
++	}
++	if stale == nil || stale.IsActive {
++		t.Fatalf("expected stale mapping inactive, got %+v", stale)
++	}
++
++	persistedRun, err := runRepo.GetByID(run.ID)
++	if err != nil {
++		t.Fatalf("get run: %v", err)
++	}
++	if persistedRun == nil || persistedRun.FinishedAt == nil {
++		t.Fatalf("expected persisted finished run, got %+v", persistedRun)
++	}
++}
++
++func TestFansgurusSyncServiceRejectsNonFansgurusConnection(t *testing.T) {
++	svc, _, _, db := setupFansgurusSyncTest(t)
++	encrypted, err := crypto.Encrypt(crypto.DeriveKey("app-secret"), "plain-secret")
++	if err != nil {
++		t.Fatalf("encrypt: %v", err)
++	}
++	conn := &models.SiteConnection{
++		Name:      "Dujiao",
++		BaseURL:   "https://dujiao.test",
++		ApiKey:    "api-key",
++		ApiSecret: encrypted,
++		Protocol:  constants.ConnectionProtocolDujiaoNext,
++		Status:    constants.ConnectionStatusActive,
++	}
++	if err := db.Create(conn).Error; err != nil {
++		t.Fatalf("create connection: %v", err)
++	}
++
++	_, err = svc.SyncConnection(context.Background(), conn.ID)
++	if err != ErrFansgurusConnectionInvalid {
++		t.Fatalf("err=%v, want ErrFansgurusConnectionInvalid", err)
++	}
++}
++
++func setupFansgurusSyncTest(t *testing.T) (*FansgurusSyncService, repository.FansgurusServiceMappingRepository, repository.FansgurusSyncRunRepository, *gorm.DB) {
++	t.Helper()
++	db, err := gorm.Open(sqlite.Open("file:fansgurus_sync?mode=memory&cache=shared"), &gorm.Config{})
++	if err != nil {
++		t.Fatalf("open db: %v", err)
++	}
++	if err := db.AutoMigrate(&models.SiteConnection{}, &models.FansgurusServiceMapping{}, &models.FansgurusSyncRun{}); err != nil {
++		t.Fatalf("migrate: %v", err)
++	}
++	connRepo := repository.NewSiteConnectionRepository(db)
++	connSvc := NewSiteConnectionService(connRepo, "app-secret", "uploads")
++	mappingRepo := repository.NewFansgurusServiceMappingRepository(db)
++	runRepo := repository.NewFansgurusSyncRunRepository(db)
++	return NewFansgurusSyncService(connSvc, mappingRepo, runRepo), mappingRepo, runRepo, db
++}
++
++func createFansgurusConnection(t *testing.T, db *gorm.DB, id uint) *models.SiteConnection {
++	t.Helper()
++	encrypted, err := crypto.Encrypt(crypto.DeriveKey("app-secret"), "plain-secret")
++	if err != nil {
++		t.Fatalf("encrypt: %v", err)
++	}
++	conn := &models.SiteConnection{
++		ID:        id,
++		Name:      "Fansgurus",
++		BaseURL:   "https://fansgurus.test/api/v2",
++		ApiKey:    "api-key",
++		ApiSecret: encrypted,
++		Protocol:  constants.ConnectionProtocolFansgurus,
++		Status:    constants.ConnectionStatusActive,
++	}
++	if err := db.Create(conn).Error; err != nil {
++		t.Fatalf("create connection: %v", err)
++	}
++	return conn
++}
