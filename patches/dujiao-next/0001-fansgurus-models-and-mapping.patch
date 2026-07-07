@@ -1,0 +1,394 @@
+diff --git a/internal/constants/constants.go b/internal/constants/constants.go
+index bf3f917..ecf9f08 100644
+--- a/internal/constants/constants.go
++++ b/internal/constants/constants.go
+@@ -385,6 +385,7 @@ const (
+ // 对接协议类型常量
+ const (
+ 	ConnectionProtocolDujiaoNext = "dujiao-next"
++	ConnectionProtocolFansgurus  = "fansgurus"
+ )
+ 
+ // API 凭证状态常量
+diff --git a/internal/models/db.go b/internal/models/db.go
+index d69306a..97bff48 100644
+--- a/internal/models/db.go
++++ b/internal/models/db.go
+@@ -153,6 +153,8 @@ func AutoMigrate() error {
+ 		&SiteConnection{},
+ 		&ProductMapping{},
+ 		&SKUMapping{},
++		&FansgurusServiceMapping{},
++		&FansgurusSyncRun{},
+ 		&ProcurementOrder{},
+ 		&DownstreamOrderRef{},
+ 		&ReconciliationJob{},
+diff --git a/internal/models/fansgurus.go b/internal/models/fansgurus.go
+new file mode 100644
+index 0000000..4af6668
+--- /dev/null
++++ b/internal/models/fansgurus.go
+@@ -0,0 +1,75 @@
++package models
++
++import (
++	"time"
++
++	"gorm.io/gorm"
++)
++
++const (
++	FansgurusSyncStatusRunning   = "running"
++	FansgurusSyncStatusSucceeded = "succeeded"
++	FansgurusSyncStatusFailed    = "failed"
++)
++
++// FansgurusServiceMapping stores Fansgurus service metadata that is not present
++// in Dujiao-Next's generic product/SKU mapping tables.
++type FansgurusServiceMapping struct {
++	ID                uint           `gorm:"primarykey" json:"id"`
++	ConnectionID      uint           `gorm:"not null;uniqueIndex:idx_fansgurus_conn_service;index" json:"connection_id"`
++	UpstreamServiceID uint           `gorm:"not null;uniqueIndex:idx_fansgurus_conn_service" json:"upstream_service_id"`
++	LocalProductID    uint           `gorm:"index;not null;default:0" json:"local_product_id"`
++	LocalSKUID        uint           `gorm:"column:local_sku_id;index;not null;default:0" json:"local_sku_id"`
++	CategoryName      string         `gorm:"type:varchar(255);not null;default:'';index" json:"category_name"`
++	ServiceName       string         `gorm:"type:varchar(500);not null;default:''" json:"service_name"`
++	ServiceType       string         `gorm:"type:varchar(64);not null;default:'';index" json:"service_type"`
++	UpstreamRate      Money          `gorm:"type:decimal(20,2);not null;default:0" json:"upstream_rate"`
++	SellRate          Money          `gorm:"type:decimal(20,2);not null;default:0" json:"sell_rate"`
++	MinQuantity       int            `gorm:"not null;default:0" json:"min_quantity"`
++	MaxQuantity       int            `gorm:"not null;default:0" json:"max_quantity"`
++	SupportsDripfeed  bool           `gorm:"not null;default:false" json:"supports_dripfeed"`
++	SupportsRefill    bool           `gorm:"not null;default:false" json:"supports_refill"`
++	SupportsCancel    bool           `gorm:"not null;default:false" json:"supports_cancel"`
++	RawPayloadJSON    JSON           `gorm:"type:json" json:"raw_payload"`
++	ContentHash       string         `gorm:"type:varchar(64);not null;default:''" json:"content_hash"`
++	IsActive          bool           `gorm:"not null;default:true;index" json:"is_active"`
++	PurchaseEnabled   bool           `gorm:"not null;default:false;index" json:"purchase_enabled"`
++	LastSeenAt        *time.Time     `gorm:"index" json:"last_seen_at,omitempty"`
++	CreatedAt         time.Time      `gorm:"index" json:"created_at"`
++	UpdatedAt         time.Time      `gorm:"index" json:"updated_at"`
++	DeletedAt         gorm.DeletedAt `gorm:"index" json:"-"`
++
++	Connection *SiteConnection `gorm:"foreignKey:ConnectionID" json:"connection,omitempty"`
++	Product    *Product        `gorm:"foreignKey:LocalProductID" json:"product,omitempty"`
++	SKU        *ProductSKU     `gorm:"foreignKey:LocalSKUID" json:"sku,omitempty"`
++}
++
++func (FansgurusServiceMapping) TableName() string {
++	return "fansgurus_service_mappings"
++}
++
++// FansgurusSyncRun records a single Fansgurus services sync attempt.
++type FansgurusSyncRun struct {
++	ID               uint           `gorm:"primarykey" json:"id"`
++	ConnectionID     uint           `gorm:"not null;index" json:"connection_id"`
++	Status           string         `gorm:"type:varchar(20);not null;default:'running';index" json:"status"`
++	StartedAt        time.Time      `gorm:"index" json:"started_at"`
++	FinishedAt       *time.Time     `json:"finished_at,omitempty"`
++	FetchedCount     int            `gorm:"not null;default:0" json:"fetched_count"`
++	CreatedCount     int            `gorm:"not null;default:0" json:"created_count"`
++	UpdatedCount     int            `gorm:"not null;default:0" json:"updated_count"`
++	DeactivatedCount int            `gorm:"not null;default:0" json:"deactivated_count"`
++	UnsupportedCount int            `gorm:"not null;default:0" json:"unsupported_count"`
++	ErrorCount       int            `gorm:"not null;default:0" json:"error_count"`
++	ResponseBytes    int64          `gorm:"not null;default:0" json:"response_bytes"`
++	ErrorMessage     string         `gorm:"type:text" json:"error_message,omitempty"`
++	CreatedAt        time.Time      `gorm:"index" json:"created_at"`
++	UpdatedAt        time.Time      `gorm:"index" json:"updated_at"`
++	DeletedAt        gorm.DeletedAt `gorm:"index" json:"-"`
++
++	Connection *SiteConnection `gorm:"foreignKey:ConnectionID" json:"connection,omitempty"`
++}
++
++func (FansgurusSyncRun) TableName() string {
++	return "fansgurus_sync_runs"
++}
+diff --git a/internal/service/fansgurus_mapping.go b/internal/service/fansgurus_mapping.go
+new file mode 100644
+index 0000000..d649a35
+--- /dev/null
++++ b/internal/service/fansgurus_mapping.go
+@@ -0,0 +1,138 @@
++package service
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"strings"
++
++	"github.com/dujiao-next/internal/models"
++
++	"github.com/shopspring/decimal"
++)
++
++const (
++	FansgurusServiceTypeDefault        = "Default"
++	FansgurusServiceTypeCustomComments = "Custom Comments"
++	FansgurusServiceTypePoll           = "Poll"
++	FansgurusServiceTypeMentions       = "Mentions"
++)
++
++var fansgurusPriceMultiplier = decimal.NewFromInt(10)
++
++// CalculateFansgurusSellRate applies Website3's launch pricing rule:
++// Website3 sell rate = Fansgurus upstream rate * 10.
++func CalculateFansgurusSellRate(upstreamRate decimal.Decimal) decimal.Decimal {
++	if upstreamRate.IsNegative() {
++		return decimal.Zero
++	}
++	return upstreamRate.Mul(fansgurusPriceMultiplier).Round(2)
++}
++
++func IsFansgurusServiceTypeSupported(serviceType string) bool {
++	switch strings.TrimSpace(serviceType) {
++	case FansgurusServiceTypeDefault,
++		FansgurusServiceTypeCustomComments,
++		FansgurusServiceTypePoll,
++		FansgurusServiceTypeMentions:
++		return true
++	default:
++		return false
++	}
++}
++
++func BuildFansgurusManualFormSchema(serviceType string) (models.JSON, bool) {
++	switch strings.TrimSpace(serviceType) {
++	case FansgurusServiceTypeDefault:
++		return models.JSON{"fields": []interface{}{
++			manualTextField("link", true),
++		}}, true
++	case FansgurusServiceTypeCustomComments:
++		return models.JSON{"fields": []interface{}{
++			manualTextField("link", true),
++			manualTextareaField("comments", true),
++		}}, true
++	case FansgurusServiceTypePoll:
++		return models.JSON{"fields": []interface{}{
++			manualTextField("link", true),
++			manualNumberField("answer_number", true, 1, 999),
++		}}, true
++	case FansgurusServiceTypeMentions:
++		return models.JSON{"fields": []interface{}{
++			manualTextField("link", true),
++			manualTextareaField("usernames", true),
++		}}, true
++	default:
++		return models.JSON{"fields": []interface{}{}}, false
++	}
++}
++
++func FansgurusContentHash(payload models.JSON) (string, error) {
++	body, err := json.Marshal(payload)
++	if err != nil {
++		return "", err
++	}
++	sum := sha256.Sum256(body)
++	return hex.EncodeToString(sum[:]), nil
++}
++
++func manualTextField(key string, required bool) map[string]interface{} {
++	return map[string]interface{}{
++		"key":         key,
++		"type":        "text",
++		"required":    required,
++		"label":       localizedFansgurusFieldLabel(key),
++		"placeholder": localizedFansgurusFieldPlaceholder(key),
++		"max_len":     500,
++	}
++}
++
++func manualTextareaField(key string, required bool) map[string]interface{} {
++	return map[string]interface{}{
++		"key":         key,
++		"type":        "textarea",
++		"required":    required,
++		"label":       localizedFansgurusFieldLabel(key),
++		"placeholder": localizedFansgurusFieldPlaceholder(key),
++		"max_len":     10000,
++	}
++}
++
++func manualNumberField(key string, required bool, min, max float64) map[string]interface{} {
++	return map[string]interface{}{
++		"key":      key,
++		"type":     "number",
++		"required": required,
++		"label":    localizedFansgurusFieldLabel(key),
++		"min":      min,
++		"max":      max,
++	}
++}
++
++func localizedFansgurusFieldLabel(key string) models.JSON {
++	switch key {
++	case "link":
++		return models.JSON{"zh-CN": "链接", "zh-TW": "連結", "en-US": "Link"}
++	case "comments":
++		return models.JSON{"zh-CN": "评论内容", "zh-TW": "評論內容", "en-US": "Comments"}
++	case "answer_number":
++		return models.JSON{"zh-CN": "投票选项编号", "zh-TW": "投票選項編號", "en-US": "Poll answer number"}
++	case "usernames":
++		return models.JSON{"zh-CN": "用户名列表", "zh-TW": "使用者名稱列表", "en-US": "Usernames"}
++	default:
++		return models.JSON{"zh-CN": key, "zh-TW": key, "en-US": key}
++	}
++}
++
++func localizedFansgurusFieldPlaceholder(key string) models.JSON {
++	switch key {
++	case "link":
++		return models.JSON{"zh-CN": "请输入目标链接", "zh-TW": "請輸入目標連結", "en-US": "Enter the target link"}
++	case "comments":
++		return models.JSON{"zh-CN": "每行一条评论", "zh-TW": "每行一則評論", "en-US": "One comment per line"}
++	case "usernames":
++		return models.JSON{"zh-CN": "每行一个用户名", "zh-TW": "每行一個使用者名稱", "en-US": "One username per line"}
++	default:
++		return models.JSON{}
++	}
++}
+diff --git a/internal/service/fansgurus_mapping_test.go b/internal/service/fansgurus_mapping_test.go
+new file mode 100644
+index 0000000..7322271
+--- /dev/null
++++ b/internal/service/fansgurus_mapping_test.go
+@@ -0,0 +1,138 @@
++package service
++
++import (
++	"testing"
++
++	"github.com/dujiao-next/internal/models"
++
++	"github.com/shopspring/decimal"
++)
++
++func TestCalculateFansgurusSellRate(t *testing.T) {
++	tests := []struct {
++		name     string
++		upstream string
++		expected string
++	}{
++		{name: "multiplies by ten", upstream: "5.00", expected: "50.00"},
++		{name: "rounds to two decimals", upstream: "6.255", expected: "62.55"},
++		{name: "zero remains zero", upstream: "0", expected: "0.00"},
++		{name: "negative floors to zero", upstream: "-1.00", expected: "0.00"},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			got := CalculateFansgurusSellRate(decimal.RequireFromString(tt.upstream))
++			want := decimal.RequireFromString(tt.expected)
++			if !got.Equal(want) {
++				t.Fatalf("got %s, want %s", got.StringFixed(2), tt.expected)
++			}
++		})
++	}
++}
++
++func TestIsFansgurusServiceTypeSupported(t *testing.T) {
++	supported := []string{
++		FansgurusServiceTypeDefault,
++		FansgurusServiceTypeCustomComments,
++		FansgurusServiceTypePoll,
++		FansgurusServiceTypeMentions,
++	}
++	for _, serviceType := range supported {
++		if !IsFansgurusServiceTypeSupported(serviceType) {
++			t.Fatalf("expected %q to be supported", serviceType)
++		}
++	}
++	if IsFansgurusServiceTypeSupported("Subscriptions") {
++		t.Fatal("expected unsupported type to be rejected")
++	}
++}
++
++func TestBuildFansgurusManualFormSchema(t *testing.T) {
++	tests := []struct {
++		serviceType string
++		keys        []string
++		supported   bool
++	}{
++		{serviceType: FansgurusServiceTypeDefault, keys: []string{"link"}, supported: true},
++		{serviceType: FansgurusServiceTypeCustomComments, keys: []string{"link", "comments"}, supported: true},
++		{serviceType: FansgurusServiceTypePoll, keys: []string{"link", "answer_number"}, supported: true},
++		{serviceType: FansgurusServiceTypeMentions, keys: []string{"link", "usernames"}, supported: true},
++		{serviceType: "Unknown", keys: []string{}, supported: false},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.serviceType, func(t *testing.T) {
++			schema, supported := BuildFansgurusManualFormSchema(tt.serviceType)
++			if supported != tt.supported {
++				t.Fatalf("supported=%v, want %v", supported, tt.supported)
++			}
++			fields, ok := schema["fields"].([]interface{})
++			if !ok {
++				t.Fatalf("schema fields type = %T, want []interface{}", schema["fields"])
++			}
++			if len(fields) != len(tt.keys) {
++				t.Fatalf("field count=%d, want %d", len(fields), len(tt.keys))
++			}
++			for i, key := range tt.keys {
++				field, ok := fields[i].(map[string]interface{})
++				if !ok {
++					t.Fatalf("field[%d] type = %T, want map[string]interface{}", i, fields[i])
++				}
++				if field["key"] != key {
++					t.Fatalf("field[%d] key=%v, want %s", i, field["key"], key)
++				}
++			}
++		})
++	}
++}
++
++func TestFansgurusContentHashStableAcrossMapOrder(t *testing.T) {
++	left := models.JSON{
++		"service": 123,
++		"name":    "Example",
++		"rate":    "0.30",
++		"flags": models.JSON{
++			"refill": true,
++			"cancel": false,
++		},
++	}
++	right := models.JSON{
++		"flags": models.JSON{
++			"cancel": false,
++			"refill": true,
++		},
++		"rate":    "0.30",
++		"name":    "Example",
++		"service": 123,
++	}
++
++	leftHash, err := FansgurusContentHash(left)
++	if err != nil {
++		t.Fatalf("left hash: %v", err)
++	}
++	rightHash, err := FansgurusContentHash(right)
++	if err != nil {
++		t.Fatalf("right hash: %v", err)
++	}
++	if leftHash != rightHash {
++		t.Fatalf("hash mismatch: %s != %s", leftHash, rightHash)
++	}
++}
++
++func TestFansgurusContentHashChangesWhenPayloadChanges(t *testing.T) {
++	base := models.JSON{"service": 123, "rate": "0.30"}
++	changed := models.JSON{"service": 123, "rate": "0.40"}
++
++	baseHash, err := FansgurusContentHash(base)
++	if err != nil {
++		t.Fatalf("base hash: %v", err)
++	}
++	changedHash, err := FansgurusContentHash(changed)
++	if err != nil {
++		t.Fatalf("changed hash: %v", err)
++	}
++	if baseHash == changedHash {
++		t.Fatal("expected hash to change when payload changes")
++	}
++}
