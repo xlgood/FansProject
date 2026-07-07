@@ -35,7 +35,8 @@ Baseline verification performed:
   `/Users/river/.codex/skills/karpathy-guidelines/SKILL.md`.
 - `.env.example` contains an empty `FANSGURUS_API_KEY=`.
 - No real Fansgurus API key was found in the repository during baseline search.
-- The working directory is not currently a Git repository.
+- At the time of the initial baseline check, the working directory did not
+  report as a Git repository.
 
 ## Decision
 
@@ -80,9 +81,10 @@ Phase 1 should produce an integration map that answers:
   points and framework choices are confirmed.
 - Any future real API key discovery must be treated as an incident: remove it,
   rotate the key, and document the event.
-- Because the workspace is not currently a Git repository, commit history,
-  branch-based review, and normal change tracking are unavailable until Git is
-  initialized or the project is moved into a repository.
+- If the workspace is not checked out as a Git repository in a future execution
+  environment, commit history, branch-based review, and normal change tracking
+  will be unavailable until Git is initialized or the project is moved into a
+  repository.
 
 ## Verification
 
