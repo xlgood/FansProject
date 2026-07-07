@@ -1,0 +1,495 @@
+diff --git a/internal/upstream/fansgurus_client.go b/internal/upstream/fansgurus_client.go
+new file mode 100644
+index 0000000..8e38e35
+--- /dev/null
++++ b/internal/upstream/fansgurus_client.go
+@@ -0,0 +1,281 @@
++package upstream
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"net/url"
++	"strings"
++	"time"
++)
++
++const defaultFansgurusBaseURL = "https://fansgurus.com/api/v2"
++
++var (
++	ErrFansgurusAuth        = errors.New("fansgurus auth error")
++	ErrFansgurusValidation  = errors.New("fansgurus validation error")
++	ErrFansgurusBusiness    = errors.New("fansgurus business error")
++	ErrFansgurusBadJSON     = errors.New("fansgurus bad json")
++	ErrFansgurusEmptyResult = errors.New("fansgurus empty result")
++)
++
++type FansgurusClient struct {
++	baseURL string
++	apiKey  string
++	client  *http.Client
++}
++
++type FansgurusClientOption func(*FansgurusClient)
++
++func WithFansgurusHTTPClient(client *http.Client) FansgurusClientOption {
++	return func(c *FansgurusClient) {
++		if client != nil {
++			c.client = client
++		}
++	}
++}
++
++func NewFansgurusClient(baseURL, apiKey string, opts ...FansgurusClientOption) *FansgurusClient {
++	baseURL = strings.TrimSpace(baseURL)
++	if baseURL == "" {
++		baseURL = defaultFansgurusBaseURL
++	}
++	c := &FansgurusClient{
++		baseURL: strings.TrimRight(baseURL, "/"),
++		apiKey:  strings.TrimSpace(apiKey),
++		client: &http.Client{
++			Timeout: 30 * time.Second,
++		},
++	}
++	for _, opt := range opts {
++		opt(c)
++	}
++	return c
++}
++
++type FansgurusBalance struct {
++	Balance  string `json:"balance"`
++	Currency string `json:"currency"`
++}
++
++type FansgurusService struct {
++	Service  uint   `json:"service"`
++	Name     string `json:"name"`
++	Type     string `json:"type"`
++	Rate     string `json:"rate"`
++	Min      int    `json:"min"`
++	Max      int    `json:"max"`
++	Dripfeed bool   `json:"dripfeed"`
++	Refill   bool   `json:"refill"`
++	Cancel   bool   `json:"cancel"`
++	Category string `json:"category"`
++}
++
++type FansgurusAddOrderRequest struct {
++	Service      uint
++	Link         string
++	Quantity     int
++	Comments     string
++	AnswerNumber string
++	Usernames    string
++}
++
++type FansgurusAddOrderResponse struct {
++	Order  uint   `json:"order"`
++	Charge string `json:"charge,omitempty"`
++}
++
++type FansgurusOrderStatus struct {
++	Status     string `json:"status"`
++	Charge     string `json:"charge,omitempty"`
++	StartCount string `json:"start_count,omitempty"`
++	Remains    string `json:"remains,omitempty"`
++	Currency   string `json:"currency,omitempty"`
++}
++
++type FansgurusError struct {
++	Kind       error
++	StatusCode int
++	Message    string
++}
++
++func (e *FansgurusError) Error() string {
++	if e == nil {
++		return ""
++	}
++	if e.StatusCode > 0 {
++		return fmt.Sprintf("fansgurus request failed: status=%d: %s", e.StatusCode, e.Message)
++	}
++	return fmt.Sprintf("fansgurus request failed: %s", e.Message)
++}
++
++func (e *FansgurusError) Unwrap() error {
++	if e == nil {
++		return nil
++	}
++	return e.Kind
++}
++
++func (c *FansgurusClient) GetBalance(ctx context.Context) (*FansgurusBalance, error) {
++	var result FansgurusBalance
++	if err := c.postForm(ctx, url.Values{"action": []string{"balance"}}, &result); err != nil {
++		return nil, err
++	}
++	return &result, nil
++}
++
++func (c *FansgurusClient) ListServices(ctx context.Context) ([]FansgurusService, error) {
++	var result []FansgurusService
++	if err := c.postForm(ctx, url.Values{"action": []string{"services"}}, &result); err != nil {
++		return nil, err
++	}
++	if len(result) == 0 {
++		return nil, &FansgurusError{Kind: ErrFansgurusEmptyResult, Message: "services returned empty result"}
++	}
++	return result, nil
++}
++
++func (c *FansgurusClient) AddOrder(ctx context.Context, req FansgurusAddOrderRequest) (*FansgurusAddOrderResponse, error) {
++	values := url.Values{
++		"action":  []string{"add"},
++		"service": []string{fmt.Sprintf("%d", req.Service)},
++	}
++	if req.Link != "" {
++		values.Set("link", req.Link)
++	}
++	if req.Quantity > 0 {
++		values.Set("quantity", fmt.Sprintf("%d", req.Quantity))
++	}
++	if req.Comments != "" {
++		values.Set("comments", req.Comments)
++	}
++	if req.AnswerNumber != "" {
++		values.Set("answer_number", req.AnswerNumber)
++	}
++	if req.Usernames != "" {
++		values.Set("usernames", req.Usernames)
++	}
++
++	var result FansgurusAddOrderResponse
++	if err := c.postForm(ctx, values, &result); err != nil {
++		return nil, err
++	}
++	return &result, nil
++}
++
++func (c *FansgurusClient) GetOrderStatus(ctx context.Context, upstreamOrderID uint) (*FansgurusOrderStatus, error) {
++	values := url.Values{
++		"action": []string{"status"},
++		"order":  []string{fmt.Sprintf("%d", upstreamOrderID)},
++	}
++	var result FansgurusOrderStatus
++	if err := c.postForm(ctx, values, &result); err != nil {
++		return nil, err
++	}
++	return &result, nil
++}
++
++func (c *FansgurusClient) postForm(ctx context.Context, values url.Values, result interface{}) error {
++	values = cloneValues(values)
++	values.Set("key", c.apiKey)
++
++	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, strings.NewReader(values.Encode()))
++	if err != nil {
++		return err
++	}
++	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
++
++	resp, err := c.client.Do(req)
++	if err != nil {
++		return fmt.Errorf("send fansgurus request: %w", err)
++	}
++	defer resp.Body.Close()
++
++	body, err := io.ReadAll(resp.Body)
++	if err != nil {
++		return fmt.Errorf("read fansgurus response: %w", err)
++	}
++
++	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
++		return &FansgurusError{
++			Kind:       classifyFansgurusError(string(body)),
++			StatusCode: resp.StatusCode,
++			Message:    redactFansgurusSecret(string(body), c.apiKey),
++		}
++	}
++
++	if apiErr := decodeFansgurusAPIError(body, c.apiKey); apiErr != nil {
++		return apiErr
++	}
++
++	if result != nil {
++		if err := json.Unmarshal(body, result); err != nil {
++			return &FansgurusError{
++				Kind:    ErrFansgurusBadJSON,
++				Message: redactFansgurusSecret(err.Error(), c.apiKey),
++			}
++		}
++	}
++	return nil
++}
++
++func decodeFansgurusAPIError(body []byte, apiKey string) error {
++	var payload map[string]interface{}
++	if err := json.Unmarshal(body, &payload); err != nil {
++		return nil
++	}
++	raw, ok := payload["error"]
++	if !ok {
++		return nil
++	}
++	msg := strings.TrimSpace(fmt.Sprint(raw))
++	if msg == "" {
++		msg = "unknown fansgurus error"
++	}
++	return &FansgurusError{
++		Kind:    classifyFansgurusError(msg),
++		Message: redactFansgurusSecret(msg, apiKey),
++	}
++}
++
++func classifyFansgurusError(message string) error {
++	normalized := strings.ToLower(strings.TrimSpace(message))
++	switch {
++	case strings.Contains(normalized, "key") ||
++		strings.Contains(normalized, "auth") ||
++		strings.Contains(normalized, "unauthorized"):
++		return ErrFansgurusAuth
++	case strings.Contains(normalized, "not enough") ||
++		strings.Contains(normalized, "insufficient") ||
++		strings.Contains(normalized, "balance"):
++		return ErrFansgurusBusiness
++	case strings.Contains(normalized, "invalid") ||
++		strings.Contains(normalized, "minimum") ||
++		strings.Contains(normalized, "maximum") ||
++		strings.Contains(normalized, "quantity") ||
++		strings.Contains(normalized, "service"):
++		return ErrFansgurusValidation
++	default:
++		return ErrFansgurusBusiness
++	}
++}
++
++func redactFansgurusSecret(message, apiKey string) string {
++	if strings.TrimSpace(apiKey) == "" {
++		return message
++	}
++	return strings.ReplaceAll(message, apiKey, "[REDACTED]")
++}
++
++func cloneValues(values url.Values) url.Values {
++	clone := make(url.Values, len(values))
++	for key, list := range values {
++		copied := make([]string, len(list))
++		copy(copied, list)
++		clone[key] = copied
++	}
++	return clone
++}
+diff --git a/internal/upstream/fansgurus_client_test.go b/internal/upstream/fansgurus_client_test.go
+new file mode 100644
+index 0000000..342ffb4
+--- /dev/null
++++ b/internal/upstream/fansgurus_client_test.go
+@@ -0,0 +1,202 @@
++package upstream
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++	"time"
++)
++
++func TestFansgurusClientGetBalance(t *testing.T) {
++	server := newFansgurusTestServer(t, func(r *http.Request) interface{} {
++		assertFansgurusAction(t, r, "balance")
++		return map[string]string{"balance": "12.34", "currency": "USD"}
++	})
++	defer server.Close()
++
++	client := NewFansgurusClient(server.URL, "secret-key")
++	balance, err := client.GetBalance(context.Background())
++	if err != nil {
++		t.Fatalf("GetBalance: %v", err)
++	}
++	if balance.Balance != "12.34" || balance.Currency != "USD" {
++		t.Fatalf("unexpected balance: %+v", balance)
++	}
++}
++
++func TestFansgurusClientListServices(t *testing.T) {
++	server := newFansgurusTestServer(t, func(r *http.Request) interface{} {
++		assertFansgurusAction(t, r, "services")
++		return []map[string]interface{}{
++			{
++				"service":  16252,
++				"name":     "Telegram Members",
++				"type":     "Default",
++				"rate":     "0.30",
++				"min":      500,
++				"max":      100000,
++				"dripfeed": false,
++				"refill":   true,
++				"cancel":   false,
++				"category": "Telegram",
++			},
++		}
++	})
++	defer server.Close()
++
++	client := NewFansgurusClient(server.URL, "secret-key")
++	services, err := client.ListServices(context.Background())
++	if err != nil {
++		t.Fatalf("ListServices: %v", err)
++	}
++	if len(services) != 1 {
++		t.Fatalf("service count=%d, want 1", len(services))
++	}
++	if services[0].Service != 16252 || services[0].Rate != "0.30" || !services[0].Refill {
++		t.Fatalf("unexpected service: %+v", services[0])
++	}
++}
++
++func TestFansgurusClientAddOrder(t *testing.T) {
++	server := newFansgurusTestServer(t, func(r *http.Request) interface{} {
++		assertFansgurusAction(t, r, "add")
++		if got := r.FormValue("service"); got != "16252" {
++			t.Fatalf("service=%s, want 16252", got)
++		}
++		if got := r.FormValue("link"); got != "https://example.com/post" {
++			t.Fatalf("link=%s", got)
++		}
++		if got := r.FormValue("quantity"); got != "500" {
++			t.Fatalf("quantity=%s, want 500", got)
++		}
++		return map[string]interface{}{"order": 123456, "charge": "0.15"}
++	})
++	defer server.Close()
++
++	client := NewFansgurusClient(server.URL, "secret-key")
++	resp, err := client.AddOrder(context.Background(), FansgurusAddOrderRequest{
++		Service:  16252,
++		Link:     "https://example.com/post",
++		Quantity: 500,
++	})
++	if err != nil {
++		t.Fatalf("AddOrder: %v", err)
++	}
++	if resp.Order != 123456 || resp.Charge != "0.15" {
++		t.Fatalf("unexpected add response: %+v", resp)
++	}
++}
++
++func TestFansgurusClientGetOrderStatus(t *testing.T) {
++	server := newFansgurusTestServer(t, func(r *http.Request) interface{} {
++		assertFansgurusAction(t, r, "status")
++		if got := r.FormValue("order"); got != "123456" {
++			t.Fatalf("order=%s, want 123456", got)
++		}
++		return map[string]string{
++			"status":      "Completed",
++			"charge":      "0.15",
++			"start_count": "100",
++			"remains":     "0",
++			"currency":    "USD",
++		}
++	})
++	defer server.Close()
++
++	client := NewFansgurusClient(server.URL, "secret-key")
++	status, err := client.GetOrderStatus(context.Background(), 123456)
++	if err != nil {
++		t.Fatalf("GetOrderStatus: %v", err)
++	}
++	if status.Status != "Completed" || status.Remains != "0" {
++		t.Fatalf("unexpected status: %+v", status)
++	}
++}
++
++func TestFansgurusClientClassifiesAndRedactsAPIError(t *testing.T) {
++	server := newFansgurusTestServer(t, func(r *http.Request) interface{} {
++		assertFansgurusAction(t, r, "balance")
++		return map[string]string{"error": "Invalid API key secret-key"}
++	})
++	defer server.Close()
++
++	client := NewFansgurusClient(server.URL, "secret-key")
++	_, err := client.GetBalance(context.Background())
++	if !errors.Is(err, ErrFansgurusAuth) {
++		t.Fatalf("expected auth error, got %v", err)
++	}
++	if strings.Contains(err.Error(), "secret-key") {
++		t.Fatalf("error leaked api key: %v", err)
++	}
++	if !strings.Contains(err.Error(), "[REDACTED]") {
++		t.Fatalf("error did not contain redaction marker: %v", err)
++	}
++}
++
++func TestFansgurusClientBadJSON(t *testing.T) {
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
++		w.Header().Set("Content-Type", "application/json")
++		_, _ = w.Write([]byte(`not-json`))
++	}))
++	defer server.Close()
++
++	client := NewFansgurusClient(server.URL, "secret-key")
++	_, err := client.GetBalance(context.Background())
++	if !errors.Is(err, ErrFansgurusBadJSON) {
++		t.Fatalf("expected bad json error, got %v", err)
++	}
++}
++
++func TestFansgurusClientEmptyServices(t *testing.T) {
++	server := newFansgurusTestServer(t, func(r *http.Request) interface{} {
++		assertFansgurusAction(t, r, "services")
++		return []interface{}{}
++	})
++	defer server.Close()
++
++	client := NewFansgurusClient(server.URL, "secret-key")
++	_, err := client.ListServices(context.Background())
++	if !errors.Is(err, ErrFansgurusEmptyResult) {
++		t.Fatalf("expected empty result error, got %v", err)
++	}
++}
++
++func TestFansgurusClientNetworkError(t *testing.T) {
++	client := NewFansgurusClient("http://127.0.0.1:1", "secret-key", WithFansgurusHTTPClient(&http.Client{
++		Timeout: 10 * time.Millisecond,
++	}))
++	_, err := client.GetBalance(context.Background())
++	if err == nil {
++		t.Fatal("expected network error")
++	}
++}
++
++func newFansgurusTestServer(t *testing.T, handler func(*http.Request) interface{}) *httptest.Server {
++	t.Helper()
++	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.Method != http.MethodPost {
++			t.Fatalf("method=%s, want POST", r.Method)
++		}
++		if err := r.ParseForm(); err != nil {
++			t.Fatalf("ParseForm: %v", err)
++		}
++		if got := r.FormValue("key"); got != "secret-key" {
++			t.Fatalf("key=%s, want secret-key", got)
++		}
++		w.Header().Set("Content-Type", "application/json")
++		if err := json.NewEncoder(w).Encode(handler(r)); err != nil {
++			t.Fatalf("encode response: %v", err)
++		}
++	}))
++}
++
++func assertFansgurusAction(t *testing.T, r *http.Request, want string) {
++	t.Helper()
++	if got := r.FormValue("action"); got != want {
++		t.Fatalf("action=%s, want %s", got, want)
++	}
++}
