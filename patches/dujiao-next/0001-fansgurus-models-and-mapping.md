@@ -41,25 +41,17 @@ It adds:
 Completed:
 
 ```text
+gofmt -w internal/constants/constants.go internal/models/db.go internal/models/fansgurus.go internal/service/fansgurus_mapping.go internal/service/fansgurus_mapping_test.go
 git diff --check
+GOPROXY=https://goproxy.cn,direct GOCACHE=/private/tmp/go-build-cache GOMODCACHE=/private/tmp/go-mod-cache go test ./internal/service
 ```
 
-Not completed:
+Notes:
 
 ```text
-gofmt
-go test ./internal/service
+The first attempt with proxy.golang.org timed out while downloading modules.
+The test passed after using GOPROXY=https://goproxy.cn,direct.
 ```
-
-Reason:
-
-```text
-go not found
-gofmt not found
-```
-
-The local execution environment does not currently expose the Go toolchain in
-`PATH`.
 
 ## Next Patch
 
