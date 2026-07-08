@@ -1,0 +1,1215 @@
+diff --git a/internal/upstream/fansgurus_client.go b/internal/upstream/fansgurus_client.go
+new file mode 100644
+index 0000000..f6db2b6
+--- /dev/null
++++ b/internal/upstream/fansgurus_client.go
+@@ -0,0 +1,294 @@
++package upstream
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"net/url"
++	"strings"
++	"time"
++
++	"github.com/shopspring/decimal"
++)
++
++const defaultFansGurusBaseURL = "https://fansgurus.com/api/v2"
++
++var (
++	ErrFansGurusAuth        = errors.New("fansgurus auth error")
++	ErrFansGurusValidation  = errors.New("fansgurus validation error")
++	ErrFansGurusBusiness    = errors.New("fansgurus business error")
++	ErrFansGurusBadJSON     = errors.New("fansgurus bad json")
++	ErrFansGurusEmptyResult = errors.New("fansgurus empty result")
++)
++
++type FansGurusClient struct {
++	baseURL string
++	apiKey  string
++	client  *http.Client
++}
++
++type FansGurusClientOption func(*FansGurusClient)
++
++func WithFansGurusHTTPClient(client *http.Client) FansGurusClientOption {
++	return func(c *FansGurusClient) {
++		if client != nil {
++			c.client = client
++		}
++	}
++}
++
++func NewFansGurusClient(baseURL, apiKey string, opts ...FansGurusClientOption) *FansGurusClient {
++	baseURL = strings.TrimSpace(baseURL)
++	if baseURL == "" {
++		baseURL = defaultFansGurusBaseURL
++	}
++	c := &FansGurusClient{
++		baseURL: strings.TrimRight(baseURL, "/"),
++		apiKey:  strings.TrimSpace(apiKey),
++		client: &http.Client{
++			Timeout: 30 * time.Second,
++		},
++	}
++	for _, opt := range opts {
++		opt(c)
++	}
++	return c
++}
++
++type FansGurusBalance struct {
++	Balance  string `json:"balance"`
++	Currency string `json:"currency"`
++}
++
++type FansGurusService struct {
++	Service  uint   `json:"service"`
++	Name     string `json:"name"`
++	Type     string `json:"type"`
++	Category string `json:"category"`
++	Rate     string `json:"rate"`
++	Min      int    `json:"min"`
++	Max      int    `json:"max"`
++	Dripfeed bool   `json:"dripfeed"`
++	Refill   bool   `json:"refill"`
++	Cancel   bool   `json:"cancel"`
++}
++
++type FansGurusAddOrderRequest struct {
++	Service      uint
++	Link         string
++	Quantity     int
++	Comments     string
++	AnswerNumber string
++	Groups       string
++	Usernames    string
++	Runs         int
++	Interval     int
++	Min          int
++	Max          int
++	Posts        int
++	OldPosts     int
++	Delay        int
++	Expiry       string
++}
++
++type FansGurusAddOrderResponse struct {
++	Order  uint   `json:"order"`
++	Charge string `json:"charge,omitempty"`
++}
++
++type FansGurusOrderStatus struct {
++	Status     string `json:"status"`
++	Charge     string `json:"charge,omitempty"`
++	StartCount string `json:"start_count,omitempty"`
++	Remains    string `json:"remains,omitempty"`
++	Currency   string `json:"currency,omitempty"`
++}
++
++type FansGurusError struct {
++	Kind       error
++	StatusCode int
++	Message    string
++}
++
++func (e *FansGurusError) Error() string {
++	if e == nil {
++		return ""
++	}
++	if e.StatusCode > 0 {
++		return fmt.Sprintf("fansgurus request failed: status=%d: %s", e.StatusCode, e.Message)
++	}
++	return fmt.Sprintf("fansgurus request failed: %s", e.Message)
++}
++
++func (e *FansGurusError) Unwrap() error {
++	if e == nil {
++		return nil
++	}
++	return e.Kind
++}
++
++func (c *FansGurusClient) GetBalance(ctx context.Context) (*FansGurusBalance, error) {
++	var result FansGurusBalance
++	if err := c.postForm(ctx, url.Values{"action": []string{"balance"}}, &result); err != nil {
++		return nil, err
++	}
++	return &result, nil
++}
++
++func (c *FansGurusClient) ListServices(ctx context.Context) ([]FansGurusService, error) {
++	var result []FansGurusService
++	if err := c.postForm(ctx, url.Values{"action": []string{"services"}}, &result); err != nil {
++		return nil, err
++	}
++	if len(result) == 0 {
++		return nil, &FansGurusError{Kind: ErrFansGurusEmptyResult, Message: "services returned empty result"}
++	}
++	return result, nil
++}
++
++func (c *FansGurusClient) AddOrder(ctx context.Context, req FansGurusAddOrderRequest) (*FansGurusAddOrderResponse, error) {
++	values := url.Values{
++		"action":  []string{"add"},
++		"service": []string{fmt.Sprintf("%d", req.Service)},
++	}
++	setNonEmpty(values, "link", req.Link)
++	setPositiveInt(values, "quantity", req.Quantity)
++	setNonEmpty(values, "comments", req.Comments)
++	setNonEmpty(values, "answer_number", req.AnswerNumber)
++	setNonEmpty(values, "groups", req.Groups)
++	setNonEmpty(values, "usernames", req.Usernames)
++	setPositiveInt(values, "runs", req.Runs)
++	setPositiveInt(values, "interval", req.Interval)
++	setPositiveInt(values, "min", req.Min)
++	setPositiveInt(values, "max", req.Max)
++	setPositiveInt(values, "posts", req.Posts)
++	setPositiveInt(values, "old_posts", req.OldPosts)
++	setPositiveInt(values, "delay", req.Delay)
++	setNonEmpty(values, "expiry", req.Expiry)
++
++	var result FansGurusAddOrderResponse
++	if err := c.postForm(ctx, values, &result); err != nil {
++		return nil, err
++	}
++	return &result, nil
++}
++
++func (c *FansGurusClient) GetOrderStatus(ctx context.Context, upstreamOrderID uint) (*FansGurusOrderStatus, error) {
++	values := url.Values{
++		"action": []string{"status"},
++		"order":  []string{fmt.Sprintf("%d", upstreamOrderID)},
++	}
++	var result FansGurusOrderStatus
++	if err := c.postForm(ctx, values, &result); err != nil {
++		return nil, err
++	}
++	return &result, nil
++}
++
++func FansGurusTargetRate(rate string) (string, error) {
++	amount, err := decimal.NewFromString(strings.TrimSpace(rate))
++	if err != nil {
++		return "", fmt.Errorf("parse fansgurus rate: %w", err)
++	}
++	return amount.Mul(decimal.NewFromInt(5)).StringFixedBank(8), nil
++}
++
++func (c *FansGurusClient) postForm(ctx context.Context, values url.Values, result interface{}) error {
++	values = cloneURLValues(values)
++	values.Set("key", c.apiKey)
++
++	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, strings.NewReader(values.Encode()))
++	if err != nil {
++		return fmt.Errorf("create fansgurus request: %w", err)
++	}
++	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
++
++	resp, err := c.client.Do(req)
++	if err != nil {
++		return fmt.Errorf("send fansgurus request: %w", err)
++	}
++	defer resp.Body.Close()
++
++	body, err := io.ReadAll(resp.Body)
++	if err != nil {
++		return fmt.Errorf("read fansgurus response: %w", err)
++	}
++
++	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
++		return &FansGurusError{
++			Kind:       classifyFansGurusError(string(body)),
++			StatusCode: resp.StatusCode,
++			Message:    redactSecret(string(body), c.apiKey),
++		}
++	}
++
++	if apiErr := decodeFansGurusAPIError(body, c.apiKey); apiErr != nil {
++		return apiErr
++	}
++
++	if result != nil {
++		if err := json.Unmarshal(body, result); err != nil {
++			return &FansGurusError{
++				Kind:    ErrFansGurusBadJSON,
++				Message: redactSecret(err.Error(), c.apiKey),
++			}
++		}
++	}
++	return nil
++}
++
++func decodeFansGurusAPIError(body []byte, apiKey string) error {
++	var payload map[string]interface{}
++	if err := json.Unmarshal(body, &payload); err != nil {
++		return nil
++	}
++	raw, ok := payload["error"]
++	if !ok {
++		return nil
++	}
++	msg := strings.TrimSpace(fmt.Sprint(raw))
++	if msg == "" {
++		msg = "unknown fansgurus error"
++	}
++	return &FansGurusError{
++		Kind:    classifyFansGurusError(msg),
++		Message: redactSecret(msg, apiKey),
++	}
++}
++
++func classifyFansGurusError(message string) error {
++	normalized := strings.ToLower(strings.TrimSpace(message))
++	switch {
++	case strings.Contains(normalized, "key") ||
++		strings.Contains(normalized, "auth") ||
++		strings.Contains(normalized, "unauthorized"):
++		return ErrFansGurusAuth
++	case strings.Contains(normalized, "not enough") ||
++		strings.Contains(normalized, "insufficient") ||
++		strings.Contains(normalized, "balance"):
++		return ErrFansGurusBusiness
++	case strings.Contains(normalized, "invalid") ||
++		strings.Contains(normalized, "minimum") ||
++		strings.Contains(normalized, "maximum") ||
++		strings.Contains(normalized, "quantity") ||
++		strings.Contains(normalized, "service"):
++		return ErrFansGurusValidation
++	default:
++		return ErrFansGurusBusiness
++	}
++}
++
++func setNonEmpty(values url.Values, key, value string) {
++	if strings.TrimSpace(value) != "" {
++		values.Set(key, value)
++	}
++}
++
++func setPositiveInt(values url.Values, key string, value int) {
++	if value > 0 {
++		values.Set(key, fmt.Sprintf("%d", value))
++	}
++}
+diff --git a/internal/upstream/fansgurus_client_test.go b/internal/upstream/fansgurus_client_test.go
+new file mode 100644
+index 0000000..54c1f89
+--- /dev/null
++++ b/internal/upstream/fansgurus_client_test.go
+@@ -0,0 +1,213 @@
++package upstream
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++	"time"
++)
++
++func TestFansGurusClientGetBalance(t *testing.T) {
++	server := newFansGurusTestServer(t, func(r *http.Request) interface{} {
++		assertFansGurusAction(t, r, "balance")
++		return map[string]string{"balance": "12.34", "currency": "USD"}
++	})
++	defer server.Close()
++
++	client := NewFansGurusClient(server.URL, "secret-key")
++	balance, err := client.GetBalance(context.Background())
++	if err != nil {
++		t.Fatalf("GetBalance: %v", err)
++	}
++	if balance.Balance != "12.34" || balance.Currency != "USD" {
++		t.Fatalf("unexpected balance: %+v", balance)
++	}
++}
++
++func TestFansGurusClientListServices(t *testing.T) {
++	server := newFansGurusTestServer(t, func(r *http.Request) interface{} {
++		assertFansGurusAction(t, r, "services")
++		return []map[string]interface{}{
++			{
++				"service":  16252,
++				"name":     "Instagram Followers",
++				"type":     "Default",
++				"rate":     "0.30",
++				"min":      500,
++				"max":      100000,
++				"dripfeed": false,
++				"refill":   true,
++				"cancel":   false,
++				"category": "Instagram",
++			},
++		}
++	})
++	defer server.Close()
++
++	client := NewFansGurusClient(server.URL, "secret-key")
++	services, err := client.ListServices(context.Background())
++	if err != nil {
++		t.Fatalf("ListServices: %v", err)
++	}
++	if len(services) != 1 {
++		t.Fatalf("service count=%d, want 1", len(services))
++	}
++	if services[0].Service != 16252 || services[0].Rate != "0.30" || services[0].Min != 500 || services[0].Max != 100000 {
++		t.Fatalf("unexpected service: %+v", services[0])
++	}
++}
++
++func TestFansGurusClientAddOrder(t *testing.T) {
++	server := newFansGurusTestServer(t, func(r *http.Request) interface{} {
++		assertFansGurusAction(t, r, "add")
++		if got := r.FormValue("service"); got != "16252" {
++			t.Fatalf("service=%s, want 16252", got)
++		}
++		if got := r.FormValue("link"); got != "https://example.com/post" {
++			t.Fatalf("link=%s", got)
++		}
++		if got := r.FormValue("quantity"); got != "500" {
++			t.Fatalf("quantity=%s, want 500", got)
++		}
++		if got := r.FormValue("runs"); got != "2" {
++			t.Fatalf("runs=%s, want 2", got)
++		}
++		return map[string]interface{}{"order": 123456, "charge": "0.15"}
++	})
++	defer server.Close()
++
++	client := NewFansGurusClient(server.URL, "secret-key")
++	resp, err := client.AddOrder(context.Background(), FansGurusAddOrderRequest{
++		Service:  16252,
++		Link:     "https://example.com/post",
++		Quantity: 500,
++		Runs:     2,
++	})
++	if err != nil {
++		t.Fatalf("AddOrder: %v", err)
++	}
++	if resp.Order != 123456 || resp.Charge != "0.15" {
++		t.Fatalf("unexpected add response: %+v", resp)
++	}
++}
++
++func TestFansGurusClientGetOrderStatus(t *testing.T) {
++	server := newFansGurusTestServer(t, func(r *http.Request) interface{} {
++		assertFansGurusAction(t, r, "status")
++		if got := r.FormValue("order"); got != "123456" {
++			t.Fatalf("order=%s, want 123456", got)
++		}
++		return map[string]string{
++			"status":      "Completed",
++			"charge":      "0.15",
++			"start_count": "100",
++			"remains":     "0",
++			"currency":    "USD",
++		}
++	})
++	defer server.Close()
++
++	client := NewFansGurusClient(server.URL, "secret-key")
++	status, err := client.GetOrderStatus(context.Background(), 123456)
++	if err != nil {
++		t.Fatalf("GetOrderStatus: %v", err)
++	}
++	if status.Status != "Completed" || status.Remains != "0" {
++		t.Fatalf("unexpected status: %+v", status)
++	}
++}
++
++func TestFansGurusTargetRatePreservesPerThousandBasis(t *testing.T) {
++	got, err := FansGurusTargetRate("2.00")
++	if err != nil {
++		t.Fatalf("FansGurusTargetRate: %v", err)
++	}
++	if got != "10.00000000" {
++		t.Fatalf("target rate=%s, want 10.00000000", got)
++	}
++}
++
++func TestFansGurusClientClassifiesAndRedactsAPIError(t *testing.T) {
++	server := newFansGurusTestServer(t, func(r *http.Request) interface{} {
++		assertFansGurusAction(t, r, "balance")
++		return map[string]string{"error": "Invalid API key secret-key"}
++	})
++	defer server.Close()
++
++	client := NewFansGurusClient(server.URL, "secret-key")
++	_, err := client.GetBalance(context.Background())
++	if !errors.Is(err, ErrFansGurusAuth) {
++		t.Fatalf("expected auth error, got %v", err)
++	}
++	if strings.Contains(err.Error(), "secret-key") {
++		t.Fatalf("error leaked api key: %v", err)
++	}
++}
++
++func TestFansGurusClientBadJSON(t *testing.T) {
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
++		w.Header().Set("Content-Type", "application/json")
++		_, _ = w.Write([]byte(`not-json`))
++	}))
++	defer server.Close()
++
++	client := NewFansGurusClient(server.URL, "secret-key")
++	_, err := client.GetBalance(context.Background())
++	if !errors.Is(err, ErrFansGurusBadJSON) {
++		t.Fatalf("expected bad json error, got %v", err)
++	}
++}
++
++func TestFansGurusClientEmptyServices(t *testing.T) {
++	server := newFansGurusTestServer(t, func(r *http.Request) interface{} {
++		assertFansGurusAction(t, r, "services")
++		return []interface{}{}
++	})
++	defer server.Close()
++
++	client := NewFansGurusClient(server.URL, "secret-key")
++	_, err := client.ListServices(context.Background())
++	if !errors.Is(err, ErrFansGurusEmptyResult) {
++		t.Fatalf("expected empty result error, got %v", err)
++	}
++}
++
++func TestFansGurusClientNetworkError(t *testing.T) {
++	client := NewFansGurusClient("http://127.0.0.1:1", "secret-key", WithFansGurusHTTPClient(&http.Client{
++		Timeout: 10 * time.Millisecond,
++	}))
++	_, err := client.GetBalance(context.Background())
++	if err == nil {
++		t.Fatal("expected network error")
++	}
++}
++
++func newFansGurusTestServer(t *testing.T, handler func(*http.Request) interface{}) *httptest.Server {
++	t.Helper()
++	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.Method != http.MethodPost {
++			t.Fatalf("method=%s, want POST", r.Method)
++		}
++		if err := r.ParseForm(); err != nil {
++			t.Fatalf("ParseForm: %v", err)
++		}
++		if got := r.FormValue("key"); got != "secret-key" {
++			t.Fatalf("key=%s, want secret-key", got)
++		}
++		w.Header().Set("Content-Type", "application/json")
++		if err := json.NewEncoder(w).Encode(handler(r)); err != nil {
++			t.Fatalf("encode response: %v", err)
++		}
++	}))
++}
++
++func assertFansGurusAction(t *testing.T, r *http.Request, want string) {
++	t.Helper()
++	if got := r.FormValue("action"); got != want {
++		t.Fatalf("action=%s, want %s", got, want)
++	}
++}
+diff --git a/internal/upstream/tgx_client.go b/internal/upstream/tgx_client.go
+new file mode 100644
+index 0000000..e98c9c2
+--- /dev/null
++++ b/internal/upstream/tgx_client.go
+@@ -0,0 +1,385 @@
++package upstream
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"net/url"
++	"strings"
++	"time"
++
++	"github.com/shopspring/decimal"
++)
++
++const defaultTGXBaseURL = "https://www.tgxaccount.com/shared"
++
++var (
++	ErrTGXAuth       = errors.New("tgx auth error")
++	ErrTGXBusiness   = errors.New("tgx business error")
++	ErrTGXBadJSON    = errors.New("tgx bad json")
++	ErrTGXBadPayload = errors.New("tgx bad payload")
++)
++
++type TGXClient struct {
++	baseURL string
++	appID   string
++	appKey  string
++	client  *http.Client
++}
++
++type TGXClientOption func(*TGXClient)
++
++func WithTGXHTTPClient(client *http.Client) TGXClientOption {
++	return func(c *TGXClient) {
++		if client != nil {
++			c.client = client
++		}
++	}
++}
++
++func NewTGXClient(baseURL, appID, appKey string, opts ...TGXClientOption) *TGXClient {
++	baseURL = strings.TrimSpace(baseURL)
++	if baseURL == "" {
++		baseURL = defaultTGXBaseURL
++	}
++	c := &TGXClient{
++		baseURL: strings.TrimRight(baseURL, "/"),
++		appID:   strings.TrimSpace(appID),
++		appKey:  strings.TrimSpace(appKey),
++		client: &http.Client{
++			Timeout: 30 * time.Second,
++		},
++	}
++	for _, opt := range opts {
++		opt(c)
++	}
++	return c
++}
++
++type TGXConnectResponse struct {
++	ShopName string `json:"shop_name,omitempty"`
++	Balance  string `json:"balance,omitempty"`
++}
++
++type TGXCommodity struct {
++	ID              json.Number     `json:"id,omitempty"`
++	Code            string          `json:"code"`
++	Name            string          `json:"name"`
++	Description     string          `json:"description,omitempty"`
++	Price           string          `json:"price"`
++	UserPrice       string          `json:"user_price,omitempty"`
++	FactoryPrice    string          `json:"factory_price,omitempty"`
++	Cover           string          `json:"cover,omitempty"`
++	DeliveryWay     string          `json:"delivery_way,omitempty"`
++	ContactType     string          `json:"contact_type,omitempty"`
++	PasswordStatus  string          `json:"password_status,omitempty"`
++	Config          json.RawMessage `json:"config,omitempty"`
++	Widget          json.RawMessage `json:"widget,omitempty"`
++	DraftStatus     string          `json:"draft_status,omitempty"`
++	InventoryHidden string          `json:"inventory_hidden,omitempty"`
++	Minimum         int             `json:"minimum,omitempty"`
++	PurchaseCount   int             `json:"purchase_count,omitempty"`
++}
++
++type TGXItemsResponse struct {
++	Items      []TGXCommodity  `json:"items,omitempty"`
++	Categories json.RawMessage `json:"categories,omitempty"`
++	Raw        json.RawMessage `json:"-"`
++}
++
++type TGXInventoryResponse struct {
++	Code      string          `json:"code,omitempty"`
++	Race      string          `json:"race,omitempty"`
++	Price     string          `json:"price,omitempty"`
++	Stock     int             `json:"stock,omitempty"`
++	Inventory int             `json:"inventory,omitempty"`
++	Widget    json.RawMessage `json:"widget,omitempty"`
++	Config    json.RawMessage `json:"config,omitempty"`
++	Raw       json.RawMessage `json:"-"`
++}
++
++type TGXInventoryStateResponse struct {
++	Code      string `json:"code,omitempty"`
++	Race      string `json:"race,omitempty"`
++	Quantity  int    `json:"quantity,omitempty"`
++	Available bool   `json:"available,omitempty"`
++	State     string `json:"state,omitempty"`
++	Message   string `json:"message,omitempty"`
++}
++
++type TGXTradeRequest struct {
++	SharedCode string
++	Race       string
++	Quantity   int
++	RequestNo  string
++	Widget     map[string]string
++}
++
++type TGXTradeResponse struct {
++	TradeNo string          `json:"trade_no"`
++	Secret  string          `json:"secret,omitempty"`
++	Widget  json.RawMessage `json:"widget,omitempty"`
++	Status  string          `json:"status,omitempty"`
++}
++
++type TGXQueryResponse struct {
++	TradeNo string          `json:"trade_no"`
++	Secret  string          `json:"secret,omitempty"`
++	Widget  json.RawMessage `json:"widget,omitempty"`
++	Status  string          `json:"status,omitempty"`
++}
++
++type TGXError struct {
++	Kind       error
++	StatusCode int
++	Code       string
++	Message    string
++}
++
++func (e *TGXError) Error() string {
++	if e == nil {
++		return ""
++	}
++	if e.StatusCode > 0 {
++		return fmt.Sprintf("tgx request failed: status=%d code=%s: %s", e.StatusCode, e.Code, e.Message)
++	}
++	return fmt.Sprintf("tgx request failed: code=%s: %s", e.Code, e.Message)
++}
++
++func (e *TGXError) Unwrap() error {
++	if e == nil {
++		return nil
++	}
++	return e.Kind
++}
++
++func (c *TGXClient) Connect(ctx context.Context) (*TGXConnectResponse, error) {
++	var result TGXConnectResponse
++	if err := c.postForm(ctx, "/authentication/connect", nil, &result); err != nil {
++		return nil, err
++	}
++	return &result, nil
++}
++
++func (c *TGXClient) ListItems(ctx context.Context) (*TGXItemsResponse, error) {
++	var result TGXItemsResponse
++	if err := c.postForm(ctx, "/commodity/items", nil, &result); err != nil {
++		return nil, err
++	}
++	return &result, nil
++}
++
++func (c *TGXClient) GetItem(ctx context.Context, sharedCode string) (*TGXCommodity, error) {
++	values := url.Values{"shared_code": []string{sharedCode}}
++	var result TGXCommodity
++	if err := c.postForm(ctx, "/commodity/item", values, &result); err != nil {
++		return nil, err
++	}
++	return &result, nil
++}
++
++func (c *TGXClient) GetInventory(ctx context.Context, sharedCode, race string) (*TGXInventoryResponse, error) {
++	values := url.Values{"shared_code": []string{sharedCode}}
++	setNonEmpty(values, "race", race)
++	var result TGXInventoryResponse
++	if err := c.postForm(ctx, "/commodity/inventory", values, &result); err != nil {
++		return nil, err
++	}
++	return &result, nil
++}
++
++func (c *TGXClient) GetInventoryState(ctx context.Context, sharedCode, race string, quantity int) (*TGXInventoryStateResponse, error) {
++	values := url.Values{"shared_code": []string{sharedCode}}
++	setNonEmpty(values, "race", race)
++	setPositiveInt(values, "quantity", quantity)
++	var result TGXInventoryStateResponse
++	if err := c.postForm(ctx, "/commodity/inventoryState", values, &result); err != nil {
++		return nil, err
++	}
++	return &result, nil
++}
++
++func (c *TGXClient) Trade(ctx context.Context, req TGXTradeRequest) (*TGXTradeResponse, error) {
++	values := url.Values{"shared_code": []string{req.SharedCode}}
++	setNonEmpty(values, "race", req.Race)
++	setPositiveInt(values, "quantity", req.Quantity)
++	setNonEmpty(values, "request_no", req.RequestNo)
++	for key, value := range req.Widget {
++		setNonEmpty(values, key, value)
++	}
++
++	var result TGXTradeResponse
++	if err := c.postForm(ctx, "/commodity/trade", values, &result); err != nil {
++		return nil, err
++	}
++	return &result, nil
++}
++
++func (c *TGXClient) QueryTrade(ctx context.Context, tradeNo string) (*TGXQueryResponse, error) {
++	values := url.Values{"trade_no": []string{tradeNo}}
++	var result TGXQueryResponse
++	if err := c.postForm(ctx, "/commodity/query", values, &result); err != nil {
++		return nil, err
++	}
++	return &result, nil
++}
++
++func TGXTargetPrice(price string) (string, error) {
++	amount, err := decimal.NewFromString(strings.TrimSpace(price))
++	if err != nil {
++		return "", fmt.Errorf("parse tgx price: %w", err)
++	}
++	return amount.Mul(decimal.RequireFromString("1.2")).StringFixedBank(8), nil
++}
++
++func (c *TGXClient) postForm(ctx context.Context, path string, values url.Values, result interface{}) error {
++	values = cloneURLValues(values)
++	values.Set("app_id", c.appID)
++	values.Set("sign", SignTGX(values, c.appKey))
++
++	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, strings.NewReader(values.Encode()))
++	if err != nil {
++		return fmt.Errorf("create tgx request: %w", err)
++	}
++	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
++
++	resp, err := c.client.Do(req)
++	if err != nil {
++		return fmt.Errorf("send tgx request: %w", err)
++	}
++	defer resp.Body.Close()
++
++	body, err := io.ReadAll(resp.Body)
++	if err != nil {
++		return fmt.Errorf("read tgx response: %w", err)
++	}
++
++	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
++		return &TGXError{
++			Kind:       ErrTGXBusiness,
++			StatusCode: resp.StatusCode,
++			Message:    redactSecret(string(body), c.appKey),
++		}
++	}
++
++	if err := decodeTGXResponse(body, c.appKey, result); err != nil {
++		return err
++	}
++	return nil
++}
++
++func decodeTGXResponse(body []byte, appKey string, result interface{}) error {
++	var wrapper struct {
++		Code    interface{}       `json:"code"`
++		Status  interface{}       `json:"status"`
++		Message string            `json:"message"`
++		Msg     string            `json:"msg"`
++		Data    json.RawMessage   `json:"data"`
++		Result  json.RawMessage   `json:"result"`
++		Items   []TGXCommodity    `json:"items"`
++		List    []TGXCommodity    `json:"list"`
++		Payload json.RawMessage   `json:"payload"`
++		Raw     *json.RawMessage  `json:"-"`
++		Extra   map[string]string `json:"-"`
++	}
++	decoder := json.NewDecoder(strings.NewReader(string(body)))
++	decoder.UseNumber()
++	if err := decoder.Decode(&wrapper); err != nil {
++		return &TGXError{Kind: ErrTGXBadJSON, Message: redactSecret(err.Error(), appKey)}
++	}
++
++	code := normalizeTGXCode(wrapper.Code)
++	if code == "" {
++		code = normalizeTGXCode(wrapper.Status)
++	}
++	msg := strings.TrimSpace(wrapper.Message)
++	if msg == "" {
++		msg = strings.TrimSpace(wrapper.Msg)
++	}
++	if code != "" && code != "0" && code != "200" && !strings.EqualFold(code, "success") && !strings.EqualFold(code, "ok") {
++		return &TGXError{
++			Kind:    classifyTGXError(msg),
++			Code:    code,
++			Message: redactSecret(msg, appKey),
++		}
++	}
++
++	payload := wrapper.Data
++	if len(payload) == 0 || string(payload) == "null" {
++		payload = wrapper.Result
++	}
++	if len(payload) == 0 || string(payload) == "null" {
++		payload = wrapper.Payload
++	}
++	if len(payload) == 0 || string(payload) == "null" {
++		payload = body
++	}
++
++	if itemsResp, ok := result.(*TGXItemsResponse); ok {
++		itemsResp.Raw = append(itemsResp.Raw[:0], payload...)
++		if len(wrapper.Items) > 0 {
++			itemsResp.Items = wrapper.Items
++			return nil
++		}
++		if len(wrapper.List) > 0 {
++			itemsResp.Items = wrapper.List
++			return nil
++		}
++	}
++	if invResp, ok := result.(*TGXInventoryResponse); ok {
++		invResp.Raw = append(invResp.Raw[:0], payload...)
++	}
++
++	if result != nil {
++		if err := json.Unmarshal(payload, result); err != nil {
++			return &TGXError{Kind: ErrTGXBadPayload, Message: redactSecret(err.Error(), appKey)}
++		}
++	}
++	return nil
++}
++
++func normalizeTGXCode(raw interface{}) string {
++	switch v := raw.(type) {
++	case nil:
++		return ""
++	case string:
++		return strings.TrimSpace(v)
++	case json.Number:
++		return v.String()
++	case float64:
++		return decimal.NewFromFloat(v).String()
++	default:
++		return strings.TrimSpace(fmt.Sprint(v))
++	}
++}
++
++func classifyTGXError(message string) error {
++	normalized := strings.ToLower(strings.TrimSpace(message))
++	if strings.Contains(normalized, "app") ||
++		strings.Contains(normalized, "key") ||
++		strings.Contains(normalized, "sign") ||
++		strings.Contains(normalized, "auth") {
++		return ErrTGXAuth
++	}
++	return ErrTGXBusiness
++}
++
++func redactSecret(message, secret string) string {
++	if strings.TrimSpace(secret) == "" {
++		return message
++	}
++	return strings.ReplaceAll(message, secret, "[REDACTED]")
++}
++
++func cloneURLValues(values url.Values) url.Values {
++	clone := make(url.Values, len(values))
++	for key, list := range values {
++		copied := make([]string, len(list))
++		copy(copied, list)
++		clone[key] = copied
++	}
++	return clone
++}
+diff --git a/internal/upstream/tgx_client_test.go b/internal/upstream/tgx_client_test.go
+new file mode 100644
+index 0000000..a15352d
+--- /dev/null
++++ b/internal/upstream/tgx_client_test.go
+@@ -0,0 +1,255 @@
++package upstream
++
++import (
++	"context"
++	"crypto/md5"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"net/http"
++	"net/http/httptest"
++	"net/url"
++	"strings"
++	"testing"
++)
++
++func TestTGXSignerSortsDropsEmptyAndDecodes(t *testing.T) {
++	params := url.Values{
++		"shared_code": []string{"ig account"},
++		"race":        []string{"普通"},
++		"empty":       []string{""},
++		"sign":        []string{"old-sign"},
++		"app_id":      []string{"test-app-id"},
++	}
++
++	signing := BuildTGXSignString(params, "app-secret")
++	wantSigning := "app_id=test-app-id&race=普通&shared_code=ig account&key=app-secret"
++	if signing != wantSigning {
++		t.Fatalf("signing string=%q, want %q", signing, wantSigning)
++	}
++
++	sum := md5.Sum([]byte(wantSigning))
++	wantSign := strings.ToUpper(hex.EncodeToString(sum[:]))
++	if got := SignTGX(params, "app-secret"); got != wantSign {
++		t.Fatalf("sign=%s, want %s", got, wantSign)
++	}
++}
++
++func TestTGXClientConnectAndSignedRequest(t *testing.T) {
++	server := newTGXTestServer(t, func(r *http.Request) interface{} {
++		assertTGXPath(t, r, "/authentication/connect")
++		assertTGXSigned(t, r, "test-app-id", "app-secret")
++		return map[string]interface{}{
++			"code": 0,
++			"data": map[string]string{"shop_name": "TGX Shop", "balance": "88.00"},
++		}
++	})
++	defer server.Close()
++
++	client := NewTGXClient(server.URL, "test-app-id", "app-secret")
++	resp, err := client.Connect(context.Background())
++	if err != nil {
++		t.Fatalf("Connect: %v", err)
++	}
++	if resp.ShopName != "TGX Shop" || resp.Balance != "88.00" {
++		t.Fatalf("unexpected connect response: %+v", resp)
++	}
++}
++
++func TestTGXClientListItems(t *testing.T) {
++	server := newTGXTestServer(t, func(r *http.Request) interface{} {
++		assertTGXPath(t, r, "/commodity/items")
++		return map[string]interface{}{
++			"code": 0,
++			"data": map[string]interface{}{
++				"items": []map[string]interface{}{
++					{
++						"code":           "IG-001",
++						"name":           "Instagram Account",
++						"description":    "aged account",
++						"price":          "100.00",
++						"user_price":     "120.00",
++						"factory_price":  "80.00",
++						"delivery_way":   "auto",
++						"config":         json.RawMessage(`{"category[普通]":"100.00"}`),
++						"widget":         json.RawMessage(`[{"name":"email","label":"Email"}]`),
++						"minimum":        1,
++						"purchase_count": 3,
++					},
++				},
++			},
++		}
++	})
++	defer server.Close()
++
++	client := NewTGXClient(server.URL, "test-app-id", "app-secret")
++	resp, err := client.ListItems(context.Background())
++	if err != nil {
++		t.Fatalf("ListItems: %v", err)
++	}
++	if len(resp.Items) != 1 || resp.Items[0].Code != "IG-001" || resp.Items[0].Price != "100.00" {
++		t.Fatalf("unexpected items response: %+v", resp)
++	}
++}
++
++func TestTGXClientInventoryTradeAndQuery(t *testing.T) {
++	server := newTGXTestServer(t, func(r *http.Request) interface{} {
++		switch r.URL.Path {
++		case "/commodity/inventory":
++			if got := r.FormValue("shared_code"); got != "IG-001" {
++				t.Fatalf("shared_code=%s, want IG-001", got)
++			}
++			if got := r.FormValue("race"); got != "普通" {
++				t.Fatalf("race=%s, want 普通", got)
++			}
++			return map[string]interface{}{"code": 0, "data": map[string]interface{}{"code": "IG-001", "race": "普通", "price": "100.00", "stock": 5}}
++		case "/commodity/inventoryState":
++			if got := r.FormValue("quantity"); got != "2" {
++				t.Fatalf("quantity=%s, want 2", got)
++			}
++			return map[string]interface{}{"code": 0, "data": map[string]interface{}{"available": true, "quantity": 2}}
++		case "/commodity/trade":
++			if got := r.FormValue("request_no"); got != "local-order-1" {
++				t.Fatalf("request_no=%s, want local-order-1", got)
++			}
++			if got := r.FormValue("email"); got != "buyer@example.com" {
++				t.Fatalf("email=%s, want buyer@example.com", got)
++			}
++			return map[string]interface{}{"code": 0, "data": map[string]string{"trade_no": "T202607080001", "secret": "account-secret", "status": "completed"}}
++		case "/commodity/query":
++			if got := r.FormValue("trade_no"); got != "T202607080001" {
++				t.Fatalf("trade_no=%s, want T202607080001", got)
++			}
++			return map[string]interface{}{"code": 0, "data": map[string]string{"trade_no": "T202607080001", "secret": "account-secret", "status": "completed"}}
++		default:
++			t.Fatalf("unexpected path: %s", r.URL.Path)
++		}
++		return nil
++	})
++	defer server.Close()
++
++	client := NewTGXClient(server.URL, "test-app-id", "app-secret")
++	inventory, err := client.GetInventory(context.Background(), "IG-001", "普通")
++	if err != nil {
++		t.Fatalf("GetInventory: %v", err)
++	}
++	if inventory.Stock != 5 || inventory.Price != "100.00" {
++		t.Fatalf("unexpected inventory: %+v", inventory)
++	}
++
++	state, err := client.GetInventoryState(context.Background(), "IG-001", "普通", 2)
++	if err != nil {
++		t.Fatalf("GetInventoryState: %v", err)
++	}
++	if !state.Available || state.Quantity != 2 {
++		t.Fatalf("unexpected inventory state: %+v", state)
++	}
++
++	trade, err := client.Trade(context.Background(), TGXTradeRequest{
++		SharedCode: "IG-001",
++		Race:       "普通",
++		Quantity:   2,
++		RequestNo:  "local-order-1",
++		Widget:     map[string]string{"email": "buyer@example.com"},
++	})
++	if err != nil {
++		t.Fatalf("Trade: %v", err)
++	}
++	if trade.TradeNo != "T202607080001" || trade.Secret != "account-secret" {
++		t.Fatalf("unexpected trade: %+v", trade)
++	}
++
++	query, err := client.QueryTrade(context.Background(), trade.TradeNo)
++	if err != nil {
++		t.Fatalf("QueryTrade: %v", err)
++	}
++	if query.Status != "completed" || query.Secret != "account-secret" {
++		t.Fatalf("unexpected query: %+v", query)
++	}
++}
++
++func TestTGXTargetPrice(t *testing.T) {
++	got, err := TGXTargetPrice("100.00")
++	if err != nil {
++		t.Fatalf("TGXTargetPrice: %v", err)
++	}
++	if got != "120.00000000" {
++		t.Fatalf("target price=%s, want 120.00000000", got)
++	}
++}
++
++func TestTGXClientRedactsAppKeyInErrors(t *testing.T) {
++	server := newTGXTestServer(t, func(r *http.Request) interface{} {
++		return map[string]string{"code": "401", "msg": "invalid app key app-secret"}
++	})
++	defer server.Close()
++
++	client := NewTGXClient(server.URL, "test-app-id", "app-secret")
++	_, err := client.Connect(context.Background())
++	if !errors.Is(err, ErrTGXAuth) {
++		t.Fatalf("expected auth error, got %v", err)
++	}
++	if strings.Contains(err.Error(), "app-secret") {
++		t.Fatalf("error leaked app key: %v", err)
++	}
++}
++
++func TestTGXClientBadJSON(t *testing.T) {
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
++		w.Header().Set("Content-Type", "application/json")
++		_, _ = w.Write([]byte(`not-json`))
++	}))
++	defer server.Close()
++
++	client := NewTGXClient(server.URL, "test-app-id", "app-secret")
++	_, err := client.Connect(context.Background())
++	if !errors.Is(err, ErrTGXBadJSON) {
++		t.Fatalf("expected bad json error, got %v", err)
++	}
++}
++
++func newTGXTestServer(t *testing.T, handler func(*http.Request) interface{}) *httptest.Server {
++	t.Helper()
++	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.Method != http.MethodPost {
++			t.Fatalf("method=%s, want POST", r.Method)
++		}
++		if err := r.ParseForm(); err != nil {
++			t.Fatalf("ParseForm: %v", err)
++		}
++		if got := r.FormValue("app_id"); got != "test-app-id" {
++			t.Fatalf("app_id=%s, want test-app-id", got)
++		}
++		assertTGXSigned(t, r, "test-app-id", "app-secret")
++		w.Header().Set("Content-Type", "application/json")
++		if err := json.NewEncoder(w).Encode(handler(r)); err != nil {
++			t.Fatalf("encode response: %v", err)
++		}
++	}))
++}
++
++func assertTGXPath(t *testing.T, r *http.Request, want string) {
++	t.Helper()
++	if r.URL.Path != want {
++		t.Fatalf("path=%s, want %s", r.URL.Path, want)
++	}
++}
++
++func assertTGXSigned(t *testing.T, r *http.Request, appID, appKey string) {
++	t.Helper()
++	if got := r.FormValue("app_id"); got != appID {
++		t.Fatalf("app_id=%s, want %s", got, appID)
++	}
++	params := cloneURLValues(r.PostForm)
++	got := params.Get("sign")
++	if got == "" {
++		t.Fatal("missing sign")
++	}
++	want := SignTGX(params, appKey)
++	if got != want {
++		t.Fatalf("sign=%s, want %s", got, want)
++	}
++	if r.FormValue("app_key") != "" {
++		t.Fatal("app_key must not be sent in request body")
++	}
++}
+diff --git a/internal/upstream/tgx_signer.go b/internal/upstream/tgx_signer.go
+new file mode 100644
+index 0000000..e23a058
+--- /dev/null
++++ b/internal/upstream/tgx_signer.go
+@@ -0,0 +1,38 @@
++package upstream
++
++import (
++	"crypto/md5"
++	"encoding/hex"
++	"net/url"
++	"sort"
++	"strings"
++)
++
++func SignTGX(params url.Values, appKey string) string {
++	signing := BuildTGXSignString(params, appKey)
++	sum := md5.Sum([]byte(signing))
++	return strings.ToUpper(hex.EncodeToString(sum[:]))
++}
++
++func BuildTGXSignString(params url.Values, appKey string) string {
++	keys := make([]string, 0, len(params))
++	for key, values := range params {
++		if key == "sign" || len(values) == 0 || values[0] == "" {
++			continue
++		}
++		keys = append(keys, key)
++	}
++	sort.Strings(keys)
++
++	parts := make([]string, 0, len(keys)+1)
++	for _, key := range keys {
++		parts = append(parts, key+"="+params.Get(key))
++	}
++	parts = append(parts, "key="+appKey)
++
++	decoded, err := url.QueryUnescape(strings.Join(parts, "&"))
++	if err != nil {
++		return strings.Join(parts, "&")
++	}
++	return decoded
++}

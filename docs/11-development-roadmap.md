@@ -46,6 +46,8 @@ Success criteria:
 
 ## Phase 3: Provider Clients
 
+Status: completed on 2026-07-08.
+
 Goal: add isolated provider clients with tests and no real orders.
 
 Tasks:
@@ -60,6 +62,15 @@ Success criteria:
 - Signing and request construction are tested.
 - Price parsing uses decimal math.
 - No real upstream purchase is made.
+
+Verification:
+
+- `dujiao-next/internal/upstream` now has isolated FansGurus and TGX clients.
+- FansGurus tests cover `services`, `balance`, `add`, `status`, error redaction,
+  and `rate * 5` while preserving the upstream per-1000 basis.
+- TGX tests cover signing, authentication, items, inventory, inventory state,
+  trade, query, widget form parameters, error redaction, and `price * 1.2`.
+- Targeted test passed: `go test ./internal/upstream`.
 
 ## Phase 4: SKU Sync And Filtering
 
