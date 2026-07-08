@@ -1,13 +1,17 @@
 # Storefront
 
-Custom Website3 frontend workspace.
+Reserved workspace for target site storefront notes or future frontend code.
 
-This area is reserved for the public-facing UI/UX layer:
+The preferred implementation is to reuse and extend the Dujiao-Next `user` frontend rather than build a separate storefront from scratch.
 
-- SEO/GEO landing pages.
-- Category and SKU browsing.
-- Product detail pages.
-- Mobile-first purchase flows.
-- Performance-focused rendering and caching.
+Expected responsibilities:
 
-The frontend should not call Fansgurus directly. It should read normalized Website3 catalog/order APIs exposed by the backend or adapter layer.
+- Locale-prefixed public routes for `zh-CN`, `zh-TW`, and `en`.
+- IP-based first-visit default language.
+- Platform landing pages based on the FansGurus/TGX platform intersection.
+- Fan/growth service browsing from FansGurus.
+- Account product browsing from TGX.
+- Checkout forms driven by normalized provider SKU schemas.
+- SEO/GEO landing pages and sitemap generation.
+
+The frontend must not call FansGurus or TGX directly. It should read normalized catalog and order APIs from the Dujiao-Next backend.

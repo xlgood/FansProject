@@ -1,15 +1,23 @@
-# Fansgurus Adapter
+# Provider Adapters
 
-Reserved workspace for the Fansgurus integration layer.
+Reserved workspace for upstream provider integration notes or future adapter code.
+
+Current target providers:
+
+- FansGurus fan/growth services.
+- TGX Account account products.
 
 Responsibilities:
 
-- Fetch upstream service list with `action=services`.
-- Normalize Fansgurus categories and services into Website3 catalog records.
-- Apply the fixed pricing rule: `website3_rate = upstream_rate * 10`.
-- Detect SKU additions, removals, price changes, and metadata changes.
-- Forward paid Website3 orders to Fansgurus with `action=add`.
-- Poll upstream order status with `action=status` or batch status APIs.
-- Keep upstream API keys server-side only.
+- Fetch upstream catalog data from each provider.
+- Normalize platforms and SKU metadata into the target catalog.
+- Exclude Telegram-related SKUs.
+- Publish only platforms present in both provider catalogs after filtering.
+- Apply provider pricing rules:
+  - FansGurus: upstream price * 5.
+  - TGX: upstream base price * 1.2.
+- Forward paid local orders to the correct provider.
+- Poll or query upstream order/trade status.
+- Keep all provider credentials server-side only.
 
-This adapter can be implemented as a Dujiao-Next backend extension, a sidecar service, or a scheduled worker depending on the final integration approach.
+This workspace may become a Dujiao-Next backend extension, a worker package, or may be replaced by code inside the official Dujiao-Next API repository after source import.

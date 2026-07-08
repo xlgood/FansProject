@@ -4,7 +4,17 @@ Date: 2026-07-07
 
 ## Status
 
-Accepted
+Superseded by 2026-07-08 scope reset.
+
+See:
+
+- `docs/00-project-scope.md`
+- `docs/01-architecture.md`
+- `docs/02-upstream-apis.md`
+- `docs/03-sku-sync.md`
+- `docs/05-requirements.md`
+
+This ADR is preserved as historical context only. It describes the previous FansGurus-only plan and contains outdated pricing.
 
 ## Context
 

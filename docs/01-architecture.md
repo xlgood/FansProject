@@ -1,42 +1,106 @@
 # Architecture
 
+## Baseline
+
+Dujiao-Next is the foundation. Its official docs describe a split architecture:
+
+- `api/`: Go + Gin + GORM backend.
+- `user/`: Vue 3 + Vite + TypeScript storefront.
+- `admin/`: Vue 3 + Vite + TypeScript admin.
+- `Document/`: VitePress docs.
+
+The target platform should extend that architecture rather than introduce a parallel commerce stack.
+
 ## Recommended Shape
 
-Website3 should be composed of three layers:
+```text
+Browser
+  |
+  | /zh-CN, /zh-TW, /en
+  v
+Dujiao-Next User Frontend
+  |
+  | /api/v1
+  v
+Dujiao-Next API
+  |
+  +-- Local database: products, SKUs, orders, payments, upstream mappings
+  +-- Queue/worker: sync jobs, fulfillment jobs, status polling
+  +-- Provider adapter: FansGurus
+  +-- Provider adapter: TGX Account
+  |
+  +--> FansGurus API
+  +--> TGX Shared API
+```
 
-1. Custom storefront for public SEO pages, product discovery, and checkout entry.
-2. Dujiao-Next commerce foundation for products, orders, payments, admin, and delivery lifecycle.
-3. Fansgurus adapter for upstream service sync, order forwarding, and status polling.
+## Core Modules To Add Or Extend
+
+- Provider credentials management:
+  - server-side only;
+  - encrypted at rest using Dujiao-Next secret facilities where available.
+- Provider catalog sync:
+  - `fansgurus_services_sync`;
+  - `tgx_items_sync`;
+  - platform normalization;
+  - Telegram exclusion;
+  - intersection calculation.
+- Unified catalog:
+  - platform;
+  - provider;
+  - upstream ID/code;
+  - upstream price;
+  - target price;
+  - raw payload;
+  - active/inactive state;
+  - purchase form schema.
+- Fulfillment worker:
+  - after local payment success;
+  - create upstream order;
+  - store upstream order number;
+  - poll or query upstream status;
+  - deliver returned card/account secret for TGX automatic delivery.
+- Admin tools:
+  - sync status;
+  - provider SKU mapping;
+  - exclusion and override rules;
+  - failed fulfillment retry;
+  - upstream error logs.
 
 ## Data Flow
 
-1. Scheduled sync calls Fansgurus `action=services`.
-2. Adapter normalizes upstream services into Website3 catalog records.
-3. Adapter applies `rate * 10` to create Website3 sell price.
-4. Locale detection chooses the initial language for first-time visitors.
-5. Storefront reads Website3 catalog data from local database/API, not directly from Fansgurus.
-6. Customer pays on Website3.
-7. Paid order is queued for upstream fulfillment.
-8. Adapter calls Fansgurus `action=add`.
-9. Adapter stores upstream order id.
-10. Poller updates order status until terminal state.
+1. Scheduled jobs pull FansGurus and TGX catalogs.
+2. Each provider adapter stores raw payloads and normalized provider SKUs.
+3. A normalization job extracts platform names and removes Telegram-related SKUs.
+4. The system computes the supported platform intersection.
+5. Only SKUs belonging to supported intersection platforms become storefront-visible.
+6. Pricing job calculates provider-specific target prices.
+7. Customer creates a local Dujiao-Next order and pays locally.
+8. Payment callback marks the local order paid.
+9. Queue worker sends the fulfillment request to FansGurus or TGX.
+10. Worker stores upstream IDs, returned card/account secrets, and status changes.
+11. Customer and admin see local status plus upstream-derived status.
 
 ## Why Not Direct Frontend API Calls
 
-Direct browser calls would expose the Fansgurus API key, add latency, prevent durable sync history, and make SEO pages dependent on third-party uptime.
+Upstream APIs require secrets. Browser calls would expose API keys, make SEO and checkout depend on third-party availability, and prevent durable retry/idempotency. All upstream calls must stay server-side.
 
-## Performance Requirements
+## Runtime Dependencies
 
-- Cache category and SKU lists.
-- Paginate or virtualize large SKU lists.
-- Pre-render high-value SEO landing pages.
-- Keep order forwarding asynchronous so payment callbacks return quickly.
-- Use idempotency keys for order forwarding and sync jobs.
+- Go runtime matching Dujiao-Next backend requirements.
+- Node.js 20 LTS or newer for frontend/admin.
+- PostgreSQL for production.
+- Redis for queue, cache, rate limiting, and async fulfillment.
+- HTTPS endpoints for payment callbacks and any upstream callbacks.
 
-## Locale Requirements
+## Deployment Shape
 
-- Supported locales are `en`, `zh-CN`, and `zh-TW`.
-- Public URLs should use explicit locale prefixes, for example `/en/...`, `/zh-CN/...`, and `/zh-TW/...`.
-- IP-based detection should redirect only first-time non-prefixed entry requests.
-- Manual language choice must override IP detection.
-- SEO crawlers must be able to access every locale directly through stable URLs and `hreflang` alternates.
+Production should use:
+
+- one public storefront domain;
+- one admin domain or protected admin path;
+- reverse proxy to Dujiao-Next API;
+- PostgreSQL;
+- Redis;
+- background worker enabled;
+- explicit CORS allowlist;
+- provider API keys only in server-side config or encrypted admin settings.

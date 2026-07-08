@@ -28,5 +28,9 @@ cache/
 *.sqlite
 *.sqlite3
 
-# Upstream source checkouts should stay outside this repo unless explicitly approved.
+# Upstream source checkouts live in this workspace but are not tracked by this
+# repository. They keep their own nested git histories.
 /dujiao-next/
+/user/
+/admin/
+/document/

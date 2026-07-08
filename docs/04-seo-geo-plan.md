@@ -1,37 +1,72 @@
-# SEO/GEO Plan
+# SEO, GEO, And Language Plan
 
-## Positioning
+## Supported Locales
 
-Website3 should not rely on raw SKU pages alone. It needs platform and use-case landing pages that map search intent to filtered SKU groups.
+- Simplified Chinese: `zh-CN`
+- Traditional Chinese: `zh-TW`
+- English: `en`
 
-## Page Types
+## URL Strategy
+
+Use explicit locale prefixes:
+
+- `/zh-CN/...`
+- `/zh-TW/...`
+- `/en/...`
+
+Every public page should have stable language-specific URLs.
+
+## Initial Language Selection
+
+Priority:
+
+1. Existing user-selected language cookie or user profile setting.
+2. Explicit URL locale prefix.
+3. IP geolocation:
+   - Mainland China -> `zh-CN`
+   - Taiwan, Hong Kong, Macau -> `zh-TW`
+   - other regions -> `en`
+4. `Accept-Language` fallback:
+   - `zh-CN`, `zh-SG`, simplified Chinese preference -> `zh-CN`
+   - `zh-TW`, `zh-HK`, `zh-MO`, traditional Chinese preference -> `zh-TW`
+5. Default: `en`
+
+IP detection should redirect only first-time non-prefixed entry requests. It must not block users or crawlers from directly accessing other locale URLs.
+
+## SEO Requirements
+
+- Server-render or prerender important landing pages.
+- Generate multilingual XML sitemaps.
+- Add canonical URLs.
+- Add `hreflang` alternates for each locale page.
+- Avoid making duplicated thin pages.
+- Do not rely only on upstream SKU names as page content.
+- Keep Telegram-related pages out of sitemap and navigation.
+
+## Page Groups
 
 - Home page.
-- Platform pages, such as TikTok, Instagram, YouTube, Telegram, X, Facebook, Twitch.
-- Service intent pages, such as followers, likes, views, comments, members, traffic.
-- Country or language pages where upstream supply supports localization.
-- SKU detail pages.
-- FAQ and policy pages.
+- Platform landing pages, only for supported intersection platforms.
+- Service intent pages:
+  - buy followers;
+  - buy likes;
+  - buy views;
+  - buy social accounts;
+  - account packages by platform.
+- SKU detail pages for active SKUs.
+- FAQ pages.
+- Terms, privacy, refund/service policy.
+- Payment and order status pages.
 
-## Technical SEO
+## GEO Content Rules
 
-- Server-render or statically generate important landing pages.
-- Generate XML sitemaps from active catalog and landing pages.
-- Add canonical URLs.
-- Add breadcrumb schema.
-- Add Product/Offer schema where pricing is stable enough.
-- Add FAQ schema for educational pages.
-- Keep category and SKU pages indexable only when they have useful unique content.
+GEO pages may target language or region intent, but they must remain true to available inventory:
 
-## Content Rules
+- do not create platform pages for non-intersection platforms;
+- do not create Telegram pages;
+- do not imply guaranteed third-party platform outcomes unless upstream explicitly guarantees them;
+- disclose delivery method, refill/cancel support, and after-sales scope per SKU where available.
 
-- Avoid copying Fansgurus product text verbatim as the only content.
-- Use normalized, user-facing descriptions generated from SKU attributes.
-- Clearly state fulfillment constraints, minimum/maximum quantities, and refund/refill rules.
+## Compliance And Risk Notes
 
-## Performance
-
-- Keep mobile landing pages under a tight JavaScript budget.
-- Lazy-load non-critical SKU sections.
-- Use cached catalog API responses.
-- Avoid rendering thousands of SKUs in one page.
+The target site operates in a sensitive category: social growth services and account sales may violate some third-party platform terms. Public copy and policies should avoid deceptive claims, impersonation claims, or guarantees that cannot be fulfilled. Admin should be able to disable risky SKUs quickly.

@@ -4,7 +4,9 @@ Date: 2026-07-07
 
 ## Status
 
-Accepted
+Superseded by 2026-07-08 scope reset.
+
+This ADR is preserved as historical context only. It covers a FansGurus-only adapter with outdated `* 10` pricing. Current implementation must follow `docs/02-upstream-apis.md`, `docs/03-sku-sync.md`, and `docs/05-requirements.md`.
 
 ## Context
 

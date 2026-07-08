@@ -2,32 +2,63 @@
 
 ## Goal
 
-Build Website3 as a reseller storefront with all available Fansgurus SKUs, priced at 10x the upstream Fansgurus rate, using Dujiao-Next as the commerce/order foundation where practical.
+Build a reseller platform on top of Dujiao-Next that aggregates:
+
+- FansGurus fan/growth services.
+- TGX Account account-purchase products.
+
+The target site should behave as one storefront and admin system. Customers should be able to browse a supported platform, choose either fan/growth service SKUs or account-purchase SKUs, pay on the target site, and receive fulfillment or status updates through the Dujiao-Next order lifecycle.
 
 ## In Scope
 
-- Mandatory build-vs-reuse review for new requirements.
-- Fansgurus SKU sync.
-- Fansgurus price sync.
-- Website3 price calculation at 10x upstream rate.
-- Custom frontend UI/UX.
-- Desktop and mobile optimization.
-- SEO/GEO landing page strategy.
-- Simplified Chinese, Traditional Chinese, and English language support.
-- IP-based first-visit default language detection with manual language switching.
-- Order forwarding to Fansgurus after successful Website3 payment.
-- Order status polling and customer-facing status updates.
+- Use Dujiao-Next as the base system instead of rebuilding commerce from scratch.
+- Integrate FansGurus API for fan/growth SKUs.
+- Integrate TGX Account shared API for account SKUs.
+- Synchronize upstream SKU lists, prices, inventory/status where available, and local availability.
+- Exclude every SKU that contains Telegram or Telegram-related wording.
+- Only expose platforms present in both upstream catalogs after Telegram exclusion.
+- Apply provider-specific pricing:
+  - FansGurus target price = upstream price * 5.
+  - TGX target price = upstream `price` * 1.2.
+- Use decimal arithmetic for all money calculations.
+- Preserve upstream raw payloads for audit and troubleshooting.
+- Support Simplified Chinese, Traditional Chinese, and English.
+- Choose first-visit default language from IP geolocation, with `Accept-Language` fallback and manual override.
+- Use Dujiao-Next payment, order, user, admin, and delivery primitives where practical.
+- Add provider adapters, sync jobs, queue jobs, and admin views only where Dujiao-Next does not already cover the need.
+- Maintain SEO-friendly multilingual URLs and crawlable landing pages.
+- Support Alipay, WeChat Pay, and PayPal if available through Dujiao-Next payment integrations.
+- Reserve a domain-driven brand asset layer for favicon, logo, site images, site name, and domain-specific public text.
 
-## Out of Scope For This Repo Structure
+## Out Of Scope For Initial Planning
 
-- Vendoring Dujiao-Next source code.
-- Storing real API keys.
-- Real order placement without funded upstream balance and explicit approval.
+- Storing real upstream API credentials in git.
+- Placing real test orders upstream without explicit approval.
+- Selling Telegram-related products or services.
+- Making unsupported platforms visible only because one provider supports them.
 
-## Open Decisions
+## Current Clarity
 
-- Whether the custom storefront should be SSR/SSG or a Vue SPA with prerendered landing pages.
-- Whether the Fansgurus adapter should be embedded in Dujiao-Next backend or run as a separate sidecar worker.
-- Which payment providers are required for launch.
-- Which languages and countries are targeted first for SEO/GEO.
-- Which GeoIP method will be used in production.
+The product direction, upstream roles, pricing rules, SKU filtering rules, and Dujiao-Next reuse strategy are clear.
+
+Confirmed implementation inputs:
+
+- Dujiao-Next source exists in the current project directory:
+  - `dujiao-next/`
+  - `user/`
+  - `admin/`
+  - `document/`
+- FansGurus API credentials have been provided out of band and must be configured through secrets.
+- TGX credentials have been provided out of band and must be configured through secrets.
+- TGX markup base field is `price`.
+- Payment target is Alipay, WeChat Pay, and PayPal.
+- Display and settlement currency is USD.
+- Integration settings use a single root `.env`.
+- Cloned upstream source directories are not tracked by this root repository.
+
+Remaining uncertainties are operational:
+
+- Launch domain names for storefront, admin, and callbacks.
+- Whether the TGX proxy/agent docs contain additional bulk-pricing or reseller-specific endpoints beyond the public shared API.
+
+See `docs/10-open-questions.md`.

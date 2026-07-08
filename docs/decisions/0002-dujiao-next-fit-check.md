@@ -4,7 +4,9 @@ Date: 2026-07-07
 
 ## Status
 
-Accepted
+Partially superseded by 2026-07-08 scope reset.
+
+The Dujiao-Next fit findings remain useful, but all FansGurus-only assumptions are outdated. The current project integrates both FansGurus and TGX, excludes Telegram SKUs, computes cross-provider platform intersection, and uses provider-specific multipliers.
 
 ## Context
 
