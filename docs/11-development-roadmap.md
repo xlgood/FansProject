@@ -74,7 +74,7 @@ Verification:
 
 ## Phase 4: SKU Sync And Filtering
 
-Status: catalog policy and base database import completed on 2026-07-08; live API sync remains pending.
+Status: catalog policy, base database import, and TGX race/widget handling completed on 2026-07-08; live API sync remains pending.
 
 Goal: build the catalog pipeline.
 
@@ -105,6 +105,8 @@ Completed verification:
 - Extended mapping tables with provider/platform/string upstream code fields so
   TGX `shared_code` and future race SKU codes do not need to be forced into
   numeric IDs.
+- Added TGX `config` race parsing into multiple SKU variants.
+- Added TGX `widget` conversion into Dujiao manual form schema.
 - Tests cover platform aliases, Telegram English and Chinese tokens, `tg`
   boundary matching, inactive upstream items, non-intersection filtering, and
   FansGurus/TGX price rules.
@@ -116,7 +118,6 @@ Completed verification:
 Remaining implementation:
 
 - Persist raw upstream catalog payloads.
-- Expand TGX race/config parsing into multiple SKU rows.
 - Pull live FansGurus/TGX catalogs and run the import from a sync job.
 - Deactivate previously imported items that disappear or leave the intersection.
 

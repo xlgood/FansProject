@@ -1,0 +1,1238 @@
+diff --git a/internal/service/provider_catalog_import.go b/internal/service/provider_catalog_import.go
+new file mode 100644
+index 0000000..de1bf4e
+--- /dev/null
++++ b/internal/service/provider_catalog_import.go
+@@ -0,0 +1,322 @@
++package service
++
++import (
++	"crypto/sha1"
++	"encoding/hex"
++	"errors"
++	"fmt"
++	"regexp"
++	"strings"
++	"time"
++
++	"github.com/dujiao-next/internal/constants"
++	"github.com/dujiao-next/internal/models"
++	"github.com/dujiao-next/internal/repository"
++	"github.com/dujiao-next/internal/upstream"
++
++	"github.com/shopspring/decimal"
++	"gorm.io/gorm"
++)
++
++type ProviderCatalogImportResult struct {
++	Imported int
++	Skipped  int
++}
++
++func (s *ProductMappingService) ImportProviderCatalog(connectionID uint, catalog upstream.FilteredCatalog) (*ProviderCatalogImportResult, error) {
++	result := &ProviderCatalogImportResult{}
++	items := append([]upstream.ProviderCatalogItem{}, catalog.FansGurus...)
++	items = append(items, catalog.TGX...)
++
++	for _, item := range items {
++		if strings.TrimSpace(item.Code) == "" {
++			result.Skipped++
++			continue
++		}
++		imported, err := s.importProviderCatalogItem(connectionID, item)
++		if err != nil {
++			return result, err
++		}
++		if imported {
++			result.Imported++
++		} else {
++			result.Skipped++
++		}
++	}
++	return result, nil
++}
++
++func (s *ProductMappingService) importProviderCatalogItem(connectionID uint, item upstream.ProviderCatalogItem) (bool, error) {
++	if s == nil || s.mappingRepo == nil || s.productRepo == nil || s.productSKURepo == nil || s.categoryRepo == nil || s.skuMappingRepo == nil {
++		return false, errorsProductMappingDependencyMissing()
++	}
++	if !item.Active || item.ContainsTelegram() {
++		return false, nil
++	}
++	platform := item.Platform()
++	if platform == "" {
++		return false, nil
++	}
++	existing, err := s.mappingRepo.GetByConnectionAndUpstreamCode(connectionID, item.Code)
++	if err != nil {
++		return false, err
++	}
++	if existing != nil {
++		return false, nil
++	}
++
++	price, err := decimal.NewFromString(item.TargetPrice)
++	if err != nil {
++		return false, fmt.Errorf("parse target price for %s:%s: %w", item.Provider, item.Code, err)
++	}
++	cost, err := decimal.NewFromString(item.UpstreamPrice)
++	if err != nil {
++		cost = decimal.Zero
++	}
++
++	var imported bool
++	err = s.productRepo.Transaction(func(tx *gorm.DB) error {
++		return s.importProviderCatalogItemInTx(tx, connectionID, item, platform, price, cost, &imported)
++	})
++	if err != nil {
++		return false, err
++	}
++	return imported, nil
++}
++
++func (s *ProductMappingService) importProviderCatalogItemInTx(tx *gorm.DB, connectionID uint, item upstream.ProviderCatalogItem, platform string, price decimal.Decimal, cost decimal.Decimal, imported *bool) error {
++	productRepo := s.productRepo.WithTx(tx)
++	productSKURepo := s.productSKURepo.WithTx(tx)
++	mappingRepo := s.mappingRepo.WithTx(tx)
++	skuMappingRepo := s.skuMappingRepo.WithTx(tx)
++
++	category, err := findOrCreateProviderCategoryTx(tx, platform)
++	if err != nil {
++		return err
++	}
++
++	slugBase := normalizeProviderSlug(fmt.Sprintf("%s-%s-%s", item.Provider, platform, item.Code))
++	slug, err := s.uniqueProductSlug(slugBase)
++	if err != nil {
++		return err
++	}
++
++	product := models.Product{
++		CategoryID:           category.ID,
++		Slug:                 slug,
++		TitleJSON:            localizedText(item.Name),
++		DescriptionJSON:      localizedText(item.Description),
++		ContentJSON:          localizedText(item.Description),
++		SeoMetaJSON:          models.JSON{},
++		ManualFormSchemaJSON: providerCatalogManualFormSchema(item),
++		PriceAmount:          models.NewMoneyFromDecimal(price),
++		CostPriceAmount:      models.NewMoneyFromDecimal(cost),
++		Images:               models.StringArray{},
++		Tags:                 models.StringArray{platform, item.Provider},
++		PurchaseType:         constants.ProductPurchaseMember,
++		MinPurchaseQuantity:  item.MinQuantity,
++		MaxPurchaseQuantity:  item.MaxQuantity,
++		FulfillmentType:      constants.FulfillmentTypeUpstream,
++		ManualStockTotal:     0,
++		IsMapped:             true,
++		IsActive:             false,
++	}
++	if err := productRepo.Create(&product); err != nil {
++		return fmt.Errorf("create provider product: %w", err)
++	}
++
++	now := time.Now()
++	mapping := models.ProductMapping{
++		ConnectionID:            connectionID,
++		LocalProductID:          product.ID,
++		UpstreamProductID:       0,
++		UpstreamProductCode:     item.Code,
++		Provider:                item.Provider,
++		Platform:                platform,
++		UpstreamFulfillmentType: constants.FulfillmentTypeManual,
++		UpstreamStatus:          models.UpstreamStatusActive,
++		IsActive:                true,
++		LastSyncedAt:            &now,
++	}
++	if err := mappingRepo.Create(&mapping); err != nil {
++		return fmt.Errorf("create provider mapping: %w", err)
++	}
++
++	variants := item.Variants
++	if len(variants) == 0 {
++		variants = []upstream.ProviderCatalogVariant{{
++			Code:          item.Code,
++			Name:          "default",
++			UpstreamPrice: item.UpstreamPrice,
++			TargetPrice:   item.TargetPrice,
++			Stock:         -1,
++			Active:        true,
++		}}
++	}
++	for _, variant := range variants {
++		if err := s.createProviderVariantSKU(productSKURepo, skuMappingRepo, product.ID, mapping.ID, item, variant, platform, now); err != nil {
++			return err
++		}
++	}
++
++	*imported = true
++	return nil
++}
++
++func (s *ProductMappingService) createProviderVariantSKU(
++	productSKURepo repository.ProductSKURepository,
++	skuMappingRepo repository.SKUMappingRepository,
++	productID uint,
++	mappingID uint,
++	item upstream.ProviderCatalogItem,
++	variant upstream.ProviderCatalogVariant,
++	platform string,
++	now time.Time,
++) error {
++	skuPrice, err := decimal.NewFromString(variant.TargetPrice)
++	if err != nil {
++		return fmt.Errorf("parse provider variant target price: %w", err)
++	}
++	upstreamPrice, err := decimal.NewFromString(variant.UpstreamPrice)
++	if err != nil {
++		upstreamPrice = decimal.Zero
++	}
++	skuCode := normalizeProviderSKUCode(variant.Code)
++	if skuCode == "" {
++		skuCode = models.DefaultSKUCode
++	}
++	sku := models.ProductSKU{
++		ProductID:        productID,
++		SKUCode:          skuCode,
++		SpecValuesJSON:   providerVariantSpecValues(item.Provider, platform, variant),
++		PriceAmount:      models.NewMoneyFromDecimal(skuPrice),
++		CostPriceAmount:  models.NewMoneyFromDecimal(upstreamPrice),
++		ManualStockTotal: 0,
++		IsActive:         variant.Active,
++	}
++	if err := productSKURepo.Create(&sku); err != nil {
++		return fmt.Errorf("create provider sku: %w", err)
++	}
++
++	stock := variant.Stock
++	if stock == 0 {
++		stock = -1
++	}
++	skuMapping := models.SKUMapping{
++		ProductMappingID: mappingID,
++		LocalSKUID:       sku.ID,
++		UpstreamSKUID:    0,
++		UpstreamSKUCode:  variant.Code,
++		UpstreamPrice:    models.NewMoneyFromDecimal(upstreamPrice),
++		UpstreamStock:    stock,
++		UpstreamIsActive: variant.Active,
++		StockSyncedAt:    &now,
++	}
++	if err := skuMappingRepo.Create(&skuMapping); err != nil {
++		return fmt.Errorf("create provider sku mapping: %w", err)
++	}
++	return nil
++}
++
++func findOrCreateProviderCategoryTx(tx *gorm.DB, platform string) (*models.Category, error) {
++	slug := "platform-" + normalizeProviderSlug(platform)
++	var category models.Category
++	if err := tx.Where("slug = ?", slug).First(&category).Error; err != nil {
++		if !errors.Is(err, gorm.ErrRecordNotFound) {
++			return nil, err
++		}
++		category = models.Category{
++			Slug:     slug,
++			NameJSON: localizedText(platform),
++			IsActive: true,
++		}
++		if err := tx.Create(&category).Error; err != nil {
++			return nil, fmt.Errorf("create provider category: %w", err)
++		}
++	}
++	return &category, nil
++}
++
++func (s *ProductMappingService) uniqueProductSlug(base string) (string, error) {
++	if base == "" {
++		base = fmt.Sprintf("provider-product-%d", time.Now().UnixMilli())
++	}
++	for i := 0; i < 100; i++ {
++		candidate := base
++		if i > 0 {
++			candidate = fmt.Sprintf("%s-%d", base, i+1)
++		}
++		count, err := s.productRepo.CountBySlug(candidate, nil)
++		if err != nil {
++			return "", err
++		}
++		if count == 0 {
++			return candidate, nil
++		}
++	}
++	return "", fmt.Errorf("slug conflict after retries: %s", base)
++}
++
++func providerManualFormSchema(provider string) models.JSON {
++	if provider == upstream.CatalogProviderFansGurus {
++		return models.JSON{
++			"fields": []map[string]interface{}{
++				{"key": "link", "type": "url", "label": "Target URL", "required": true},
++			},
++		}
++	}
++	return models.JSON{"fields": []map[string]interface{}{}}
++}
++
++func providerCatalogManualFormSchema(item upstream.ProviderCatalogItem) models.JSON {
++	if len(item.ManualSchema) > 0 {
++		return models.JSON(item.ManualSchema)
++	}
++	return providerManualFormSchema(item.Provider)
++}
++
++func providerVariantSpecValues(provider string, platform string, variant upstream.ProviderCatalogVariant) models.JSON {
++	values := models.JSON{"provider": provider, "platform": platform}
++	if variant.Name != "" && variant.Name != "default" {
++		values["race"] = variant.Name
++	}
++	return values
++}
++
++func localizedText(value string) models.JSON {
++	value = strings.TrimSpace(value)
++	return models.JSON{
++		"zh-CN": value,
++		"zh-TW": value,
++		"en-US": value,
++	}
++}
++
++var providerSlugRe = regexp.MustCompile(`[^a-z0-9]+`)
++
++func normalizeProviderSlug(value string) string {
++	value = strings.ToLower(strings.TrimSpace(value))
++	value = providerSlugRe.ReplaceAllString(value, "-")
++	value = strings.Trim(value, "-")
++	if len(value) > 96 {
++		value = strings.Trim(value[:96], "-")
++	}
++	return value
++}
++
++func normalizeProviderSKUCode(value string) string {
++	slug := normalizeProviderSlug(value)
++	hash := sha1.Sum([]byte(value))
++	suffix := hex.EncodeToString(hash[:])[:8]
++	if slug == "" {
++		return suffix
++	}
++	if len(slug) > 55 {
++		slug = strings.Trim(slug[:55], "-")
++	}
++	return slug + "-" + suffix
++}
++
++func errorsProductMappingDependencyMissing() error {
++	return errors.New("product mapping service dependency missing")
++}
+diff --git a/internal/service/provider_catalog_import_test.go b/internal/service/provider_catalog_import_test.go
+new file mode 100644
+index 0000000..3198743
+--- /dev/null
++++ b/internal/service/provider_catalog_import_test.go
+@@ -0,0 +1,255 @@
++package service
++
++import (
++	"testing"
++
++	"github.com/dujiao-next/internal/constants"
++	"github.com/dujiao-next/internal/models"
++	"github.com/dujiao-next/internal/repository"
++	"github.com/dujiao-next/internal/upstream"
++
++	"github.com/glebarez/sqlite"
++	"gorm.io/gorm"
++)
++
++func TestImportProviderCatalogCreatesProductsAndMappings(t *testing.T) {
++	db := setupProviderCatalogImportDB(t)
++	svc := NewProductMappingService(
++		repository.NewProductMappingRepository(db),
++		repository.NewSKUMappingRepository(db),
++		repository.NewProductRepository(db),
++		repository.NewProductSKURepository(db),
++		repository.NewCategoryRepository(db),
++		nil,
++	)
++
++	catalog := upstream.BuildFilteredCatalog(
++		[]upstream.ProviderCatalogItem{
++			{
++				Provider:      upstream.CatalogProviderFansGurus,
++				Code:          "16252",
++				Name:          "Instagram Followers",
++				Category:      "Instagram",
++				UpstreamPrice: "2.00",
++				TargetPrice:   "10.00000000",
++				MinQuantity:   500,
++				MaxQuantity:   10000,
++				Active:        true,
++			},
++			{
++				Provider:      upstream.CatalogProviderFansGurus,
++				Code:          "tg-1",
++				Name:          "Telegram Members",
++				Category:      "Telegram",
++				UpstreamPrice: "1.00",
++				TargetPrice:   "5.00000000",
++				Active:        true,
++			},
++		},
++		[]upstream.ProviderCatalogItem{
++			{
++				Provider:      upstream.CatalogProviderTGX,
++				Code:          "IG-001",
++				Name:          "IG Account",
++				Description:   "Instagram aged account",
++				UpstreamPrice: "100.00",
++				TargetPrice:   "120.00000000",
++				MinQuantity:   1,
++				Active:        true,
++			},
++			{
++				Provider:      upstream.CatalogProviderTGX,
++				Code:          "FB-001",
++				Name:          "Facebook Account",
++				Description:   "Facebook account",
++				UpstreamPrice: "80.00",
++				TargetPrice:   "96.00000000",
++				Active:        true,
++			},
++		},
++	)
++
++	result, err := svc.ImportProviderCatalog(10, catalog)
++	if err != nil {
++		t.Fatalf("ImportProviderCatalog: %v", err)
++	}
++	if result.Imported != 2 || result.Skipped != 0 {
++		t.Fatalf("result=%+v, want imported=2 skipped=0", result)
++	}
++
++	var categories []models.Category
++	if err := db.Find(&categories).Error; err != nil {
++		t.Fatalf("load categories: %v", err)
++	}
++	if len(categories) != 1 || categories[0].Slug != "platform-instagram" {
++		t.Fatalf("categories=%+v, want only platform-instagram", categories)
++	}
++
++	var products []models.Product
++	if err := db.Preload("SKUs").Order("slug ASC").Find(&products).Error; err != nil {
++		t.Fatalf("load products: %v", err)
++	}
++	if len(products) != 2 {
++		t.Fatalf("product count=%d, want 2", len(products))
++	}
++	for _, product := range products {
++		if product.FulfillmentType != constants.FulfillmentTypeUpstream || !product.IsMapped || product.IsActive {
++			t.Fatalf("unexpected product flags: %+v", product)
++		}
++		if len(product.SKUs) != 1 {
++			t.Fatalf("product %s sku count=%d, want 1", product.Slug, len(product.SKUs))
++		}
++	}
++
++	var fansMapping models.ProductMapping
++	if err := db.Where("upstream_product_code = ?", "16252").First(&fansMapping).Error; err != nil {
++		t.Fatalf("load fans mapping: %v", err)
++	}
++	if fansMapping.Provider != upstream.CatalogProviderFansGurus || fansMapping.Platform != "instagram" {
++		t.Fatalf("unexpected fans mapping: %+v", fansMapping)
++	}
++
++	var tgxMapping models.ProductMapping
++	if err := db.Where("upstream_product_code = ?", "IG-001").First(&tgxMapping).Error; err != nil {
++		t.Fatalf("load tgx mapping: %v", err)
++	}
++	if tgxMapping.Provider != upstream.CatalogProviderTGX || tgxMapping.Platform != "instagram" {
++		t.Fatalf("unexpected tgx mapping: %+v", tgxMapping)
++	}
++
++	var skuMappings []models.SKUMapping
++	if err := db.Order("upstream_sku_code ASC").Find(&skuMappings).Error; err != nil {
++		t.Fatalf("load sku mappings: %v", err)
++	}
++	if len(skuMappings) != 2 {
++		t.Fatalf("sku mapping count=%d, want 2", len(skuMappings))
++	}
++	if skuMappings[0].UpstreamSKUCode == "" || skuMappings[1].UpstreamSKUCode == "" {
++		t.Fatalf("sku mappings should keep upstream sku codes: %+v", skuMappings)
++	}
++}
++
++func TestImportProviderCatalogSkipsExistingMapping(t *testing.T) {
++	db := setupProviderCatalogImportDB(t)
++	svc := NewProductMappingService(
++		repository.NewProductMappingRepository(db),
++		repository.NewSKUMappingRepository(db),
++		repository.NewProductRepository(db),
++		repository.NewProductSKURepository(db),
++		repository.NewCategoryRepository(db),
++		nil,
++	)
++
++	catalog := upstream.BuildFilteredCatalog(
++		[]upstream.ProviderCatalogItem{
++			{
++				Provider:      upstream.CatalogProviderFansGurus,
++				Code:          "16252",
++				Name:          "Instagram Followers",
++				Category:      "Instagram",
++				UpstreamPrice: "2.00",
++				TargetPrice:   "10.00000000",
++				Active:        true,
++			},
++		},
++		[]upstream.ProviderCatalogItem{
++			{
++				Provider:      upstream.CatalogProviderTGX,
++				Code:          "IG-001",
++				Name:          "IG Account",
++				Description:   "Instagram aged account",
++				UpstreamPrice: "100.00",
++				TargetPrice:   "120.00000000",
++				Active:        true,
++			},
++		},
++	)
++
++	first, err := svc.ImportProviderCatalog(10, catalog)
++	if err != nil {
++		t.Fatalf("first import: %v", err)
++	}
++	second, err := svc.ImportProviderCatalog(10, catalog)
++	if err != nil {
++		t.Fatalf("second import: %v", err)
++	}
++	if first.Imported != 2 || second.Imported != 0 || second.Skipped != 2 {
++		t.Fatalf("unexpected results: first=%+v second=%+v", first, second)
++	}
++}
++
++func TestImportProviderCatalogCreatesTGXRaceSKUsAndWidgetSchema(t *testing.T) {
++	db := setupProviderCatalogImportDB(t)
++	svc := NewProductMappingService(
++		repository.NewProductMappingRepository(db),
++		repository.NewSKUMappingRepository(db),
++		repository.NewProductRepository(db),
++		repository.NewProductSKURepository(db),
++		repository.NewCategoryRepository(db),
++		nil,
++	)
++
++	tgxItem, err := upstream.NewTGXCatalogItem(upstream.TGXCommodity{
++		Code:        "IG-001",
++		Name:        "IG Account",
++		Description: "Instagram aged account",
++		Price:       "100.00",
++		Config:      []byte(`{"category[普通]":"100.00","category[高级]":"150.00"}`),
++		Widget:      []byte(`[{"name":"email","label":"Email","type":"text","required":true}]`),
++		Minimum:     1,
++	})
++	if err != nil {
++		t.Fatalf("NewTGXCatalogItem: %v", err)
++	}
++	catalog := upstream.FilteredCatalog{TGX: []upstream.ProviderCatalogItem{tgxItem}}
++
++	result, err := svc.ImportProviderCatalog(10, catalog)
++	if err != nil {
++		t.Fatalf("ImportProviderCatalog: %v", err)
++	}
++	if result.Imported != 1 {
++		t.Fatalf("result=%+v, want imported=1", result)
++	}
++
++	var product models.Product
++	if err := db.Preload("SKUs").Where("slug = ?", "tgx-instagram-ig-001").First(&product).Error; err != nil {
++		t.Fatalf("load product: %v", err)
++	}
++	if len(product.SKUs) != 2 {
++		t.Fatalf("sku count=%d, want 2", len(product.SKUs))
++	}
++	fields, ok := product.ManualFormSchemaJSON["fields"].([]interface{})
++	if !ok || len(fields) != 1 {
++		t.Fatalf("unexpected manual form schema: %+v", product.ManualFormSchemaJSON)
++	}
++
++	var skuMappings []models.SKUMapping
++	if err := db.Order("upstream_sku_code ASC").Find(&skuMappings).Error; err != nil {
++		t.Fatalf("load sku mappings: %v", err)
++	}
++	if len(skuMappings) != 2 {
++		t.Fatalf("sku mapping count=%d, want 2", len(skuMappings))
++	}
++	gotCodes := []string{skuMappings[0].UpstreamSKUCode, skuMappings[1].UpstreamSKUCode}
++	if gotCodes[0] != "IG-001|普通" || gotCodes[1] != "IG-001|高级" {
++		t.Fatalf("upstream sku codes=%v", gotCodes)
++	}
++}
++
++func setupProviderCatalogImportDB(t *testing.T) *gorm.DB {
++	t.Helper()
++	db, err := gorm.Open(sqlite.Open("file:"+normalizeProviderSlug(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
++	if err != nil {
++		t.Fatalf("open sqlite: %v", err)
++	}
++	if err := db.AutoMigrate(
++		&models.Category{},
++		&models.Product{},
++		&models.ProductSKU{},
++		&models.ProductMapping{},
++		&models.SKUMapping{},
++	); err != nil {
++		t.Fatalf("auto migrate: %v", err)
++	}
++	return db
++}
+diff --git a/internal/upstream/catalog_policy.go b/internal/upstream/catalog_policy.go
+new file mode 100644
+index 0000000..89663e0
+--- /dev/null
++++ b/internal/upstream/catalog_policy.go
+@@ -0,0 +1,469 @@
++package upstream
++
++import (
++	"encoding/json"
++	"fmt"
++	"regexp"
++	"sort"
++	"strconv"
++	"strings"
++)
++
++const (
++	CatalogProviderFansGurus = "fansgurus"
++	CatalogProviderTGX       = "tgx"
++)
++
++var (
++	tgTokenRE = regexp.MustCompile(`(?i)(^|[^a-z0-9])tg([^a-z0-9]|$)`)
++
++	platformAliases = map[string][]string{
++		"x": {
++			"twitter / x",
++			"twitter/x",
++			"twitter",
++			"x",
++		},
++		"instagram": {
++			"instagram",
++			"insta",
++			"ig",
++			"ins",
++		},
++		"tiktok": {
++			"tik tok",
++			"tiktok",
++		},
++		"facebook": {
++			"facebook",
++			"fb",
++		},
++		"youtube": {
++			"youtube",
++			"you tube",
++			"yt",
++		},
++		"telegram": {
++			"telegram",
++			"电报",
++			"飞机",
++			"纸飞机",
++			"t.me",
++		},
++	}
++)
++
++type ProviderCatalogItem struct {
++	Provider      string
++	Code          string
++	Name          string
++	Category      string
++	Description   string
++	Type          string
++	Tags          []string
++	RawText       []string
++	UpstreamPrice string
++	TargetPrice   string
++	MinQuantity   int
++	MaxQuantity   int
++	Variants      []ProviderCatalogVariant
++	ManualSchema  map[string]interface{}
++	Active        bool
++}
++
++type ProviderCatalogVariant struct {
++	Code          string
++	Name          string
++	UpstreamPrice string
++	TargetPrice   string
++	Stock         int
++	Active        bool
++}
++
++type FilteredCatalog struct {
++	SupportedPlatforms []string
++	FansGurus          []ProviderCatalogItem
++	TGX                []ProviderCatalogItem
++	FilteredTelegram   []ProviderCatalogItem
++	FilteredInactive   []ProviderCatalogItem
++	FilteredPlatform   []ProviderCatalogItem
++}
++
++func NewFansGurusCatalogItem(service FansGurusService) (ProviderCatalogItem, error) {
++	targetRate, err := FansGurusTargetRate(service.Rate)
++	if err != nil {
++		return ProviderCatalogItem{}, err
++	}
++	return ProviderCatalogItem{
++		Provider:      CatalogProviderFansGurus,
++		Code:          uintToString(service.Service),
++		Name:          service.Name,
++		Category:      service.Category,
++		Type:          service.Type,
++		UpstreamPrice: service.Rate,
++		TargetPrice:   targetRate,
++		MinQuantity:   service.Min,
++		MaxQuantity:   service.Max,
++		Active:        true,
++	}, nil
++}
++
++func NewTGXCatalogItem(commodity TGXCommodity) (ProviderCatalogItem, error) {
++	targetPrice, err := TGXTargetPrice(commodity.Price)
++	if err != nil {
++		return ProviderCatalogItem{}, err
++	}
++	variants, err := ParseTGXConfigVariants(commodity.Code, commodity.Price, commodity.Config)
++	if err != nil {
++		return ProviderCatalogItem{}, err
++	}
++	manualSchema := ParseTGXWidgetManualSchema(commodity.Widget)
++	return ProviderCatalogItem{
++		Provider:      CatalogProviderTGX,
++		Code:          commodity.Code,
++		Name:          commodity.Name,
++		Description:   commodity.Description,
++		RawText:       []string{string(commodity.Config), string(commodity.Widget)},
++		UpstreamPrice: commodity.Price,
++		TargetPrice:   targetPrice,
++		MinQuantity:   commodity.Minimum,
++		Variants:      variants,
++		ManualSchema:  manualSchema,
++		Active:        true,
++	}, nil
++}
++
++func ParseTGXConfigVariants(sharedCode string, fallbackPrice string, raw json.RawMessage) ([]ProviderCatalogVariant, error) {
++	entries := parseTGXConfigEntries(raw)
++	if len(entries) == 0 {
++		target, err := TGXTargetPrice(fallbackPrice)
++		if err != nil {
++			return nil, err
++		}
++		return []ProviderCatalogVariant{{
++			Code:          sharedCode,
++			Name:          "default",
++			UpstreamPrice: fallbackPrice,
++			TargetPrice:   target,
++			Stock:         -1,
++			Active:        true,
++		}}, nil
++	}
++
++	variants := make([]ProviderCatalogVariant, 0, len(entries))
++	for name, price := range entries {
++		target, err := TGXTargetPrice(price)
++		if err != nil {
++			return nil, fmt.Errorf("parse tgx race price %s: %w", name, err)
++		}
++		variants = append(variants, ProviderCatalogVariant{
++			Code:          sharedCode + "|" + name,
++			Name:          name,
++			UpstreamPrice: price,
++			TargetPrice:   target,
++			Stock:         -1,
++			Active:        true,
++		})
++	}
++	sort.Slice(variants, func(i, j int) bool { return variants[i].Name < variants[j].Name })
++	return variants, nil
++}
++
++func ParseTGXWidgetManualSchema(raw json.RawMessage) map[string]interface{} {
++	fields := parseTGXWidgetFields(raw)
++	return map[string]interface{}{"fields": fields}
++}
++
++func BuildFilteredCatalog(fansGurus, tgx []ProviderCatalogItem) FilteredCatalog {
++	fansClean, fansTelegram := filterTelegramItems(fansGurus)
++	tgxClean, tgxTelegram := filterTelegramItems(tgx)
++	fansActive, fansInactive := filterActiveItems(fansClean)
++	tgxActive, tgxInactive := filterActiveItems(tgxClean)
++	supported := intersectPlatforms(platformSet(fansActive), platformSet(tgxActive))
++
++	result := FilteredCatalog{
++		SupportedPlatforms: supported,
++		FilteredTelegram:   append(fansTelegram, tgxTelegram...),
++		FilteredInactive:   append(fansInactive, tgxInactive...),
++	}
++	result.FansGurus, result.FilteredPlatform = filterSupportedPlatforms(fansActive, supported, result.FilteredPlatform)
++	result.TGX, result.FilteredPlatform = filterSupportedPlatforms(tgxActive, supported, result.FilteredPlatform)
++	return result
++}
++
++func NormalizePlatform(parts ...string) string {
++	text := normalizeCatalogText(strings.Join(parts, " "))
++	if text == "" {
++		return ""
++	}
++	if ContainsTelegramCatalogText(text) {
++		return "telegram"
++	}
++	for platform, aliases := range platformAliases {
++		if platform == "telegram" {
++			continue
++		}
++		for _, alias := range aliases {
++			if catalogTextContainsAlias(text, alias) {
++				return platform
++			}
++		}
++	}
++	return ""
++}
++
++func ContainsTelegramCatalogText(parts ...string) bool {
++	text := normalizeCatalogText(strings.Join(parts, " "))
++	if text == "" {
++		return false
++	}
++	if strings.Contains(text, "telegram") ||
++		strings.Contains(text, "t.me") ||
++		strings.Contains(text, "电报") ||
++		strings.Contains(text, "纸飞机") ||
++		strings.Contains(text, "飞机") {
++		return true
++	}
++	return tgTokenRE.MatchString(text)
++}
++
++func (i ProviderCatalogItem) Platform() string {
++	parts := []string{i.Category, i.Name, i.Description, i.Code, i.Type}
++	parts = append(parts, i.Tags...)
++	parts = append(parts, i.RawText...)
++	return NormalizePlatform(parts...)
++}
++
++func (i ProviderCatalogItem) ContainsTelegram() bool {
++	parts := []string{i.Category, i.Name, i.Description, i.Code, i.Type}
++	parts = append(parts, i.Tags...)
++	parts = append(parts, i.RawText...)
++	return ContainsTelegramCatalogText(parts...)
++}
++
++func filterTelegramItems(items []ProviderCatalogItem) ([]ProviderCatalogItem, []ProviderCatalogItem) {
++	kept := make([]ProviderCatalogItem, 0, len(items))
++	filtered := make([]ProviderCatalogItem, 0)
++	for _, item := range items {
++		if item.ContainsTelegram() {
++			filtered = append(filtered, item)
++			continue
++		}
++		kept = append(kept, item)
++	}
++	return kept, filtered
++}
++
++func filterActiveItems(items []ProviderCatalogItem) ([]ProviderCatalogItem, []ProviderCatalogItem) {
++	kept := make([]ProviderCatalogItem, 0, len(items))
++	filtered := make([]ProviderCatalogItem, 0)
++	for _, item := range items {
++		if !item.Active {
++			filtered = append(filtered, item)
++			continue
++		}
++		kept = append(kept, item)
++	}
++	return kept, filtered
++}
++
++func platformSet(items []ProviderCatalogItem) map[string]struct{} {
++	set := make(map[string]struct{})
++	for _, item := range items {
++		if platform := item.Platform(); platform != "" {
++			set[platform] = struct{}{}
++		}
++	}
++	return set
++}
++
++func intersectPlatforms(left, right map[string]struct{}) []string {
++	result := make([]string, 0)
++	for platform := range left {
++		if _, ok := right[platform]; ok {
++			result = append(result, platform)
++		}
++	}
++	sort.Strings(result)
++	return result
++}
++
++func filterSupportedPlatforms(items []ProviderCatalogItem, supported []string, filtered []ProviderCatalogItem) ([]ProviderCatalogItem, []ProviderCatalogItem) {
++	supportedSet := make(map[string]struct{}, len(supported))
++	for _, platform := range supported {
++		supportedSet[platform] = struct{}{}
++	}
++	kept := make([]ProviderCatalogItem, 0, len(items))
++	for _, item := range items {
++		if _, ok := supportedSet[item.Platform()]; ok {
++			kept = append(kept, item)
++			continue
++		}
++		filtered = append(filtered, item)
++	}
++	return kept, filtered
++}
++
++func catalogTextContainsAlias(text, alias string) bool {
++	alias = normalizeCatalogText(alias)
++	if alias == "" {
++		return false
++	}
++	if len(alias) <= 2 && isASCIIAlphaNum(alias) {
++		pattern := regexp.MustCompile(`(^|[^a-z0-9])` + regexp.QuoteMeta(alias) + `([^a-z0-9]|$)`)
++		return pattern.MatchString(text)
++	}
++	return strings.Contains(text, alias)
++}
++
++func normalizeCatalogText(value string) string {
++	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
++}
++
++func parseTGXConfigEntries(raw json.RawMessage) map[string]string {
++	result := make(map[string]string)
++	text := strings.TrimSpace(string(raw))
++	if text == "" || text == "null" {
++		return result
++	}
++
++	var object map[string]interface{}
++	if err := json.Unmarshal(raw, &object); err == nil {
++		for key, value := range object {
++			if race := extractTGXRaceName(key); race != "" {
++				result[race] = strings.TrimSpace(fmt.Sprint(value))
++			}
++		}
++		return result
++	}
++
++	var list []map[string]interface{}
++	if err := json.Unmarshal(raw, &list); err == nil {
++		for _, item := range list {
++			race := firstStringValue(item, "race", "name", "label", "title")
++			price := firstStringValue(item, "price", "amount", "value")
++			if race != "" && price != "" {
++				result[race] = price
++			}
++		}
++		return result
++	}
++
++	for _, line := range strings.Split(text, "\n") {
++		line = strings.TrimSpace(line)
++		if line == "" || !strings.Contains(line, "=") {
++			continue
++		}
++		parts := strings.SplitN(line, "=", 2)
++		if race := extractTGXRaceName(parts[0]); race != "" {
++			result[race] = strings.TrimSpace(parts[1])
++		}
++	}
++	return result
++}
++
++func extractTGXRaceName(key string) string {
++	key = strings.TrimSpace(key)
++	if key == "" {
++		return ""
++	}
++	if strings.HasPrefix(key, "category[") && strings.HasSuffix(key, "]") {
++		return strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(key, "category["), "]"))
++	}
++	if strings.HasPrefix(key, "race[") && strings.HasSuffix(key, "]") {
++		return strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(key, "race["), "]"))
++	}
++	return key
++}
++
++func parseTGXWidgetFields(raw json.RawMessage) []map[string]interface{} {
++	text := strings.TrimSpace(string(raw))
++	if text == "" || text == "null" {
++		return []map[string]interface{}{}
++	}
++
++	var list []map[string]interface{}
++	if err := json.Unmarshal(raw, &list); err == nil {
++		return normalizeTGXWidgetFieldList(list)
++	}
++
++	var object map[string]interface{}
++	if err := json.Unmarshal(raw, &object); err == nil {
++		if nested, ok := object["fields"].([]interface{}); ok {
++			list = make([]map[string]interface{}, 0, len(nested))
++			for _, rawItem := range nested {
++				if item, ok := rawItem.(map[string]interface{}); ok {
++					list = append(list, item)
++				}
++			}
++			return normalizeTGXWidgetFieldList(list)
++		}
++		return normalizeTGXWidgetFieldList([]map[string]interface{}{object})
++	}
++
++	return []map[string]interface{}{}
++}
++
++func normalizeTGXWidgetFieldList(list []map[string]interface{}) []map[string]interface{} {
++	fields := make([]map[string]interface{}, 0, len(list))
++	for _, item := range list {
++		key := firstStringValue(item, "key", "name", "field")
++		if key == "" {
++			continue
++		}
++		fieldType := strings.ToLower(firstStringValue(item, "type", "input_type"))
++		if fieldType == "" {
++			fieldType = "text"
++		}
++		label := firstStringValue(item, "label", "title", "name")
++		if label == "" {
++			label = key
++		}
++		fields = append(fields, map[string]interface{}{
++			"key":      key,
++			"type":     fieldType,
++			"label":    label,
++			"required": boolValue(item["required"]),
++		})
++	}
++	return fields
++}
++
++func firstStringValue(values map[string]interface{}, keys ...string) string {
++	for _, key := range keys {
++		if value, ok := values[key]; ok {
++			text := strings.TrimSpace(fmt.Sprint(value))
++			if text != "" && text != "<nil>" {
++				return text
++			}
++		}
++	}
++	return ""
++}
++
++func boolValue(value interface{}) bool {
++	switch v := value.(type) {
++	case bool:
++		return v
++	case string:
++		normalized := strings.ToLower(strings.TrimSpace(v))
++		return normalized == "true" || normalized == "1" || normalized == "yes" || normalized == "required"
++	case float64:
++		return v != 0
++	default:
++		return false
++	}
++}
++
++func isASCIIAlphaNum(value string) bool {
++	for _, r := range value {
++		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
++			return false
++		}
++	}
++	return value != ""
++}
++
++func uintToString(value uint) string {
++	return strconv.FormatUint(uint64(value), 10)
++}
+diff --git a/internal/upstream/catalog_policy_test.go b/internal/upstream/catalog_policy_test.go
+new file mode 100644
+index 0000000..d1a14cd
+--- /dev/null
++++ b/internal/upstream/catalog_policy_test.go
+@@ -0,0 +1,168 @@
++package upstream
++
++import "testing"
++
++func TestNormalizePlatformAliases(t *testing.T) {
++	cases := []struct {
++		name string
++		text string
++		want string
++	}{
++		{name: "twitter", text: "Twitter / X Followers", want: "x"},
++		{name: "instagram", text: "IG aged accounts", want: "instagram"},
++		{name: "tiktok", text: "Tik Tok views", want: "tiktok"},
++		{name: "facebook", text: "FB page likes", want: "facebook"},
++		{name: "youtube", text: "YT subscribers", want: "youtube"},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			if got := NormalizePlatform(tc.text); got != tc.want {
++				t.Fatalf("NormalizePlatform(%q)=%q, want %q", tc.text, got, tc.want)
++			}
++		})
++	}
++}
++
++func TestContainsTelegramCatalogText(t *testing.T) {
++	cases := []struct {
++		name string
++		text string
++		want bool
++	}{
++		{name: "telegram", text: "Telegram channel members", want: true},
++		{name: "tme", text: "join via https://t.me/example", want: true},
++		{name: "chinese", text: "电报群成员", want: true},
++		{name: "tg boundary", text: "TG group members", want: true},
++		{name: "no tg false positive", text: "instagram followers", want: false},
++		{name: "word containing tg", text: "bright growth service", want: false},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			if got := ContainsTelegramCatalogText(tc.text); got != tc.want {
++				t.Fatalf("ContainsTelegramCatalogText(%q)=%v, want %v", tc.text, got, tc.want)
++			}
++		})
++	}
++}
++
++func TestBuildFilteredCatalogExcludesTelegramAndNonIntersection(t *testing.T) {
++	fans := []ProviderCatalogItem{
++		{Provider: CatalogProviderFansGurus, Code: "fg-ig", Name: "Instagram Followers", Category: "Instagram", Active: true},
++		{Provider: CatalogProviderFansGurus, Code: "fg-yt", Name: "YouTube Views", Category: "YouTube", Active: true},
++		{Provider: CatalogProviderFansGurus, Code: "fg-tg", Name: "Telegram Members", Category: "Telegram", Active: true},
++	}
++	tgx := []ProviderCatalogItem{
++		{Provider: CatalogProviderTGX, Code: "tgx-ig", Name: "IG Account", Description: "Instagram aged account", Active: true},
++		{Provider: CatalogProviderTGX, Code: "tgx-fb", Name: "Facebook Account", Description: "Facebook account", Active: true},
++		{Provider: CatalogProviderTGX, Code: "tgx-tg", Name: "Account", RawText: []string{`{"label":"纸飞机 username"}`}, Active: true},
++	}
++
++	result := BuildFilteredCatalog(fans, tgx)
++
++	if len(result.SupportedPlatforms) != 1 || result.SupportedPlatforms[0] != "instagram" {
++		t.Fatalf("supported platforms=%v, want [instagram]", result.SupportedPlatforms)
++	}
++	if len(result.FansGurus) != 1 || result.FansGurus[0].Code != "fg-ig" {
++		t.Fatalf("fans kept=%+v, want only fg-ig", result.FansGurus)
++	}
++	if len(result.TGX) != 1 || result.TGX[0].Code != "tgx-ig" {
++		t.Fatalf("tgx kept=%+v, want only tgx-ig", result.TGX)
++	}
++	if len(result.FilteredTelegram) != 2 {
++		t.Fatalf("telegram filtered count=%d, want 2", len(result.FilteredTelegram))
++	}
++	if len(result.FilteredPlatform) != 2 {
++		t.Fatalf("platform filtered count=%d, want 2", len(result.FilteredPlatform))
++	}
++}
++
++func TestBuildFilteredCatalogIgnoresInactiveItemsForIntersection(t *testing.T) {
++	fans := []ProviderCatalogItem{
++		{Provider: CatalogProviderFansGurus, Code: "fg-ig", Name: "Instagram Followers", Category: "Instagram", Active: true},
++		{Provider: CatalogProviderFansGurus, Code: "fg-fb", Name: "Facebook Likes", Category: "Facebook", Active: false},
++	}
++	tgx := []ProviderCatalogItem{
++		{Provider: CatalogProviderTGX, Code: "tgx-ig", Name: "Instagram Account", Active: true},
++		{Provider: CatalogProviderTGX, Code: "tgx-fb", Name: "Facebook Account", Active: true},
++	}
++
++	result := BuildFilteredCatalog(fans, tgx)
++
++	if len(result.SupportedPlatforms) != 1 || result.SupportedPlatforms[0] != "instagram" {
++		t.Fatalf("supported platforms=%v, want [instagram]", result.SupportedPlatforms)
++	}
++	if len(result.FilteredInactive) != 1 || result.FilteredInactive[0].Code != "fg-fb" {
++		t.Fatalf("inactive filtered=%+v, want fg-fb", result.FilteredInactive)
++	}
++	if len(result.FilteredPlatform) != 1 || result.FilteredPlatform[0].Code != "tgx-fb" {
++		t.Fatalf("platform filtered=%+v, want tgx-fb", result.FilteredPlatform)
++	}
++}
++
++func TestProviderCatalogItemPriceRules(t *testing.T) {
++	fansItem, err := NewFansGurusCatalogItem(FansGurusService{
++		Service:  123,
++		Name:     "Instagram Followers",
++		Category: "Instagram",
++		Rate:     "2.00",
++		Min:      500,
++		Max:      10000,
++	})
++	if err != nil {
++		t.Fatalf("NewFansGurusCatalogItem: %v", err)
++	}
++	if fansItem.Code != "123" {
++		t.Fatalf("fans code=%q, want 123", fansItem.Code)
++	}
++	if fansItem.TargetPrice != "10.00000000" {
++		t.Fatalf("fans target=%s, want 10.00000000", fansItem.TargetPrice)
++	}
++	if fansItem.MinQuantity != 500 || fansItem.MaxQuantity != 10000 {
++		t.Fatalf("fans quantity range=%d/%d", fansItem.MinQuantity, fansItem.MaxQuantity)
++	}
++
++	tgxItem, err := NewTGXCatalogItem(TGXCommodity{
++		Code:        "IG-001",
++		Name:        "Instagram Account",
++		Description: "aged account",
++		Price:       "100.00",
++		Minimum:     1,
++	})
++	if err != nil {
++		t.Fatalf("NewTGXCatalogItem: %v", err)
++	}
++	if tgxItem.TargetPrice != "120.00000000" {
++		t.Fatalf("tgx target=%s, want 120.00000000", tgxItem.TargetPrice)
++	}
++}
++
++func TestNewTGXCatalogItemParsesConfigVariantsAndWidget(t *testing.T) {
++	item, err := NewTGXCatalogItem(TGXCommodity{
++		Code:        "IG-001",
++		Name:        "Instagram Account",
++		Description: "aged account",
++		Price:       "100.00",
++		Config:      []byte(`{"category[普通]":"100.00","category[高级]":"150.00"}`),
++		Widget:      []byte(`[{"name":"email","label":"Email","type":"text","required":true}]`),
++		Minimum:     1,
++	})
++	if err != nil {
++		t.Fatalf("NewTGXCatalogItem: %v", err)
++	}
++	if len(item.Variants) != 2 {
++		t.Fatalf("variant count=%d, want 2: %+v", len(item.Variants), item.Variants)
++	}
++	if item.Variants[0].Name != "普通" || item.Variants[0].TargetPrice != "120.00000000" {
++		t.Fatalf("unexpected first variant: %+v", item.Variants[0])
++	}
++	if item.Variants[1].Name != "高级" || item.Variants[1].TargetPrice != "180.00000000" {
++		t.Fatalf("unexpected second variant: %+v", item.Variants[1])
++	}
++	fields, ok := item.ManualSchema["fields"].([]map[string]interface{})
++	if !ok || len(fields) != 1 {
++		t.Fatalf("unexpected manual schema: %+v", item.ManualSchema)
++	}
++	if fields[0]["key"] != "email" || fields[0]["required"] != true {
++		t.Fatalf("unexpected field: %+v", fields[0])
++	}
++}
