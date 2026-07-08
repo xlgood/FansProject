@@ -74,7 +74,7 @@ Verification:
 
 ## Phase 4: SKU Sync And Filtering
 
-Status: catalog policy layer completed on 2026-07-08; database import remains pending.
+Status: catalog policy and base database import completed on 2026-07-08; live API sync remains pending.
 
 Goal: build the catalog pipeline.
 
@@ -100,16 +100,25 @@ Completed verification:
 - Added a pure catalog policy layer for platform normalization, Telegram
   exclusion, active-only filtering, cross-provider platform intersection, and
   provider price helpers.
+- Added base database import for filtered provider catalog items into
+  Dujiao-Next categories, products, SKUs, product mappings, and SKU mappings.
+- Extended mapping tables with provider/platform/string upstream code fields so
+  TGX `shared_code` and future race SKU codes do not need to be forced into
+  numeric IDs.
 - Tests cover platform aliases, Telegram English and Chinese tokens, `tg`
   boundary matching, inactive upstream items, non-intersection filtering, and
   FansGurus/TGX price rules.
-- Targeted test passed: `go test ./internal/upstream`.
+- Targeted tests passed:
+  - `go test ./internal/upstream`
+  - `go test ./internal/service -run 'TestImportProviderCatalog'`
+  - `go test ./internal/repository -run 'TestSQLDialect|TestProduct'`
 
 Remaining implementation:
 
 - Persist raw upstream catalog payloads.
-- Upsert filtered products/SKUs/categories into Dujiao-Next tables.
-- Store mapping metadata needed for FansGurus service IDs and TGX string codes.
+- Expand TGX race/config parsing into multiple SKU rows.
+- Pull live FansGurus/TGX catalogs and run the import from a sync job.
+- Deactivate previously imported items that disappear or leave the intersection.
 
 ## Phase 5: Order Fulfillment
 

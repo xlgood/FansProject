@@ -1,0 +1,555 @@
+diff --git a/internal/models/product_mapping.go b/internal/models/product_mapping.go
+index f33043c..fcfa6fc 100644
+--- a/internal/models/product_mapping.go
++++ b/internal/models/product_mapping.go
+@@ -19,6 +19,9 @@ type ProductMapping struct {
+ 	ConnectionID            uint           `gorm:"index;not null" json:"connection_id"`
+ 	LocalProductID          uint           `gorm:"uniqueIndex;not null" json:"local_product_id"`
+ 	UpstreamProductID       uint           `gorm:"not null" json:"upstream_product_id"`
++	UpstreamProductCode     string         `gorm:"type:varchar(128);index" json:"upstream_product_code"`
++	Provider                string         `gorm:"type:varchar(32);index" json:"provider"`
++	Platform                string         `gorm:"type:varchar(32);index" json:"platform"`
+ 	UpstreamFulfillmentType string         `gorm:"type:varchar(20);not null;default:'manual'" json:"upstream_fulfillment_type"` // 上游原始交付类型（auto/manual）
+ 	UpstreamStatus          string         `gorm:"type:varchar(16);not null;default:'active';index" json:"upstream_status"`     // 上游商品状态：active/inactive/deleted
+ 	IsActive                bool           `gorm:"not null;default:true" json:"is_active"`
+@@ -42,6 +45,7 @@ type SKUMapping struct {
+ 	ProductMappingID uint           `gorm:"index;not null" json:"product_mapping_id"`
+ 	LocalSKUID       uint           `gorm:"column:local_sku_id;index;not null" json:"local_sku_id"`
+ 	UpstreamSKUID    uint           `gorm:"column:upstream_sku_id;not null" json:"upstream_sku_id"`
++	UpstreamSKUCode  string         `gorm:"type:varchar(128);index" json:"upstream_sku_code"`
+ 	UpstreamPrice    Money          `gorm:"type:decimal(20,2);not null;default:0" json:"upstream_price"`
+ 	UpstreamStock    int            `gorm:"not null;default:0" json:"upstream_stock"`
+ 	UpstreamIsActive bool           `gorm:"not null;default:true" json:"upstream_is_active"`
+diff --git a/internal/repository/product_mapping_repository.go b/internal/repository/product_mapping_repository.go
+index 2790c72..e50dc5a 100644
+--- a/internal/repository/product_mapping_repository.go
++++ b/internal/repository/product_mapping_repository.go
+@@ -13,6 +13,7 @@ type ProductMappingRepository interface {
+ 	GetByID(id uint) (*models.ProductMapping, error)
+ 	GetByLocalProductID(productID uint) (*models.ProductMapping, error)
+ 	GetByConnectionAndUpstreamID(connectionID, upstreamProductID uint) (*models.ProductMapping, error)
++	GetByConnectionAndUpstreamCode(connectionID uint, upstreamProductCode string) (*models.ProductMapping, error)
+ 	WithTx(tx *gorm.DB) ProductMappingRepository
+ 	Create(mapping *models.ProductMapping) error
+ 	Update(mapping *models.ProductMapping) error
+@@ -81,6 +82,17 @@ func (r *GormProductMappingRepository) GetByConnectionAndUpstreamID(connectionID
+ 	return &m, nil
+ }
+ 
++func (r *GormProductMappingRepository) GetByConnectionAndUpstreamCode(connectionID uint, upstreamProductCode string) (*models.ProductMapping, error) {
++	var m models.ProductMapping
++	if err := r.db.Where("connection_id = ? AND upstream_product_code = ?", connectionID, upstreamProductCode).First(&m).Error; err != nil {
++		if errors.Is(err, gorm.ErrRecordNotFound) {
++			return nil, nil
++		}
++		return nil, err
++	}
++	return &m, nil
++}
++
+ func (r *GormProductMappingRepository) Create(mapping *models.ProductMapping) error {
+ 	return r.db.Create(mapping).Error
+ }
+diff --git a/internal/repository/sku_mapping_repository.go b/internal/repository/sku_mapping_repository.go
+index 9a6061f..30f1468 100644
+--- a/internal/repository/sku_mapping_repository.go
++++ b/internal/repository/sku_mapping_repository.go
+@@ -13,6 +13,7 @@ type SKUMappingRepository interface {
+ 	GetByID(id uint) (*models.SKUMapping, error)
+ 	GetByLocalSKUID(skuID uint) (*models.SKUMapping, error)
+ 	GetByMappingAndUpstreamSKUID(productMappingID, upstreamSKUID uint) (*models.SKUMapping, error)
++	GetByMappingAndUpstreamSKUCode(productMappingID uint, upstreamSKUCode string) (*models.SKUMapping, error)
+ 	ListByProductMapping(productMappingID uint) ([]models.SKUMapping, error)
+ 	ListByProductMappingIDs(productMappingIDs []uint) ([]models.SKUMapping, error)
+ 	WithTx(tx *gorm.DB) SKUMappingRepository
+@@ -70,6 +71,17 @@ func (r *GormSKUMappingRepository) GetByMappingAndUpstreamSKUID(productMappingID
+ 	return &m, nil
+ }
+ 
++func (r *GormSKUMappingRepository) GetByMappingAndUpstreamSKUCode(productMappingID uint, upstreamSKUCode string) (*models.SKUMapping, error) {
++	var m models.SKUMapping
++	if err := r.db.Where("product_mapping_id = ? AND upstream_sku_code = ?", productMappingID, upstreamSKUCode).First(&m).Error; err != nil {
++		if errors.Is(err, gorm.ErrRecordNotFound) {
++			return nil, nil
++		}
++		return nil, err
++	}
++	return &m, nil
++}
++
+ func (r *GormSKUMappingRepository) ListByProductMapping(productMappingID uint) ([]models.SKUMapping, error) {
+ 	var mappings []models.SKUMapping
+ 	if err := r.db.Where("product_mapping_id = ?", productMappingID).Find(&mappings).Error; err != nil {
+diff --git a/internal/service/product_mapping_service_test.go b/internal/service/product_mapping_service_test.go
+index 76b9511..d34fb48 100644
+--- a/internal/service/product_mapping_service_test.go
++++ b/internal/service/product_mapping_service_test.go
+@@ -32,6 +32,9 @@ func (r *failingSKUMappingRepo) GetByLocalSKUID(skuID uint) (*models.SKUMapping,
+ func (r *failingSKUMappingRepo) GetByMappingAndUpstreamSKUID(productMappingID, upstreamSKUID uint) (*models.SKUMapping, error) {
+ 	return nil, nil
+ }
++func (r *failingSKUMappingRepo) GetByMappingAndUpstreamSKUCode(productMappingID uint, upstreamSKUCode string) (*models.SKUMapping, error) {
++	return nil, nil
++}
+ 
+ func (r *failingSKUMappingRepo) ListByProductMapping(productMappingID uint) ([]models.SKUMapping, error) {
+ 	return nil, nil
+diff --git a/internal/service/provider_catalog_import.go b/internal/service/provider_catalog_import.go
+new file mode 100644
+index 0000000..acd767b
+--- /dev/null
++++ b/internal/service/provider_catalog_import.go
+@@ -0,0 +1,250 @@
++package service
++
++import (
++	"errors"
++	"fmt"
++	"regexp"
++	"strings"
++	"time"
++
++	"github.com/dujiao-next/internal/constants"
++	"github.com/dujiao-next/internal/models"
++	"github.com/dujiao-next/internal/upstream"
++
++	"github.com/shopspring/decimal"
++	"gorm.io/gorm"
++)
++
++type ProviderCatalogImportResult struct {
++	Imported int
++	Skipped  int
++}
++
++func (s *ProductMappingService) ImportProviderCatalog(connectionID uint, catalog upstream.FilteredCatalog) (*ProviderCatalogImportResult, error) {
++	result := &ProviderCatalogImportResult{}
++	items := append([]upstream.ProviderCatalogItem{}, catalog.FansGurus...)
++	items = append(items, catalog.TGX...)
++
++	for _, item := range items {
++		if strings.TrimSpace(item.Code) == "" {
++			result.Skipped++
++			continue
++		}
++		imported, err := s.importProviderCatalogItem(connectionID, item)
++		if err != nil {
++			return result, err
++		}
++		if imported {
++			result.Imported++
++		} else {
++			result.Skipped++
++		}
++	}
++	return result, nil
++}
++
++func (s *ProductMappingService) importProviderCatalogItem(connectionID uint, item upstream.ProviderCatalogItem) (bool, error) {
++	if s == nil || s.mappingRepo == nil || s.productRepo == nil || s.productSKURepo == nil || s.categoryRepo == nil || s.skuMappingRepo == nil {
++		return false, errorsProductMappingDependencyMissing()
++	}
++	if !item.Active || item.ContainsTelegram() {
++		return false, nil
++	}
++	platform := item.Platform()
++	if platform == "" {
++		return false, nil
++	}
++	existing, err := s.mappingRepo.GetByConnectionAndUpstreamCode(connectionID, item.Code)
++	if err != nil {
++		return false, err
++	}
++	if existing != nil {
++		return false, nil
++	}
++
++	price, err := decimal.NewFromString(item.TargetPrice)
++	if err != nil {
++		return false, fmt.Errorf("parse target price for %s:%s: %w", item.Provider, item.Code, err)
++	}
++	cost, err := decimal.NewFromString(item.UpstreamPrice)
++	if err != nil {
++		cost = decimal.Zero
++	}
++
++	var imported bool
++	err = s.productRepo.Transaction(func(tx *gorm.DB) error {
++		return s.importProviderCatalogItemInTx(tx, connectionID, item, platform, price, cost, &imported)
++	})
++	if err != nil {
++		return false, err
++	}
++	return imported, nil
++}
++
++func (s *ProductMappingService) importProviderCatalogItemInTx(tx *gorm.DB, connectionID uint, item upstream.ProviderCatalogItem, platform string, price decimal.Decimal, cost decimal.Decimal, imported *bool) error {
++	productRepo := s.productRepo.WithTx(tx)
++	productSKURepo := s.productSKURepo.WithTx(tx)
++	mappingRepo := s.mappingRepo.WithTx(tx)
++	skuMappingRepo := s.skuMappingRepo.WithTx(tx)
++
++	category, err := findOrCreateProviderCategoryTx(tx, platform)
++	if err != nil {
++		return err
++	}
++
++	slugBase := normalizeProviderSlug(fmt.Sprintf("%s-%s-%s", item.Provider, platform, item.Code))
++	slug, err := s.uniqueProductSlug(slugBase)
++	if err != nil {
++		return err
++	}
++
++	product := models.Product{
++		CategoryID:           category.ID,
++		Slug:                 slug,
++		TitleJSON:            localizedText(item.Name),
++		DescriptionJSON:      localizedText(item.Description),
++		ContentJSON:          localizedText(item.Description),
++		SeoMetaJSON:          models.JSON{},
++		ManualFormSchemaJSON: providerManualFormSchema(item.Provider),
++		PriceAmount:          models.NewMoneyFromDecimal(price),
++		CostPriceAmount:      models.NewMoneyFromDecimal(cost),
++		Images:               models.StringArray{},
++		Tags:                 models.StringArray{platform, item.Provider},
++		PurchaseType:         constants.ProductPurchaseMember,
++		MinPurchaseQuantity:  item.MinQuantity,
++		MaxPurchaseQuantity:  item.MaxQuantity,
++		FulfillmentType:      constants.FulfillmentTypeUpstream,
++		ManualStockTotal:     0,
++		IsMapped:             true,
++		IsActive:             false,
++	}
++	if err := productRepo.Create(&product); err != nil {
++		return fmt.Errorf("create provider product: %w", err)
++	}
++
++	skuCode := normalizeProviderSlug(item.Code)
++	if skuCode == "" {
++		skuCode = models.DefaultSKUCode
++	}
++	sku := models.ProductSKU{
++		ProductID:        product.ID,
++		SKUCode:          skuCode,
++		SpecValuesJSON:   models.JSON{"provider": item.Provider, "platform": platform},
++		PriceAmount:      models.NewMoneyFromDecimal(price),
++		CostPriceAmount:  models.NewMoneyFromDecimal(cost),
++		ManualStockTotal: 0,
++		IsActive:         true,
++	}
++	if err := productSKURepo.Create(&sku); err != nil {
++		return fmt.Errorf("create provider sku: %w", err)
++	}
++
++	now := time.Now()
++	mapping := models.ProductMapping{
++		ConnectionID:            connectionID,
++		LocalProductID:          product.ID,
++		UpstreamProductID:       0,
++		UpstreamProductCode:     item.Code,
++		Provider:                item.Provider,
++		Platform:                platform,
++		UpstreamFulfillmentType: constants.FulfillmentTypeManual,
++		UpstreamStatus:          models.UpstreamStatusActive,
++		IsActive:                true,
++		LastSyncedAt:            &now,
++	}
++	if err := mappingRepo.Create(&mapping); err != nil {
++		return fmt.Errorf("create provider mapping: %w", err)
++	}
++
++	skuMapping := models.SKUMapping{
++		ProductMappingID: mapping.ID,
++		LocalSKUID:       sku.ID,
++		UpstreamSKUID:    0,
++		UpstreamSKUCode:  item.Code,
++		UpstreamPrice:    models.NewMoneyFromDecimal(cost),
++		UpstreamStock:    -1,
++		UpstreamIsActive: true,
++		StockSyncedAt:    &now,
++	}
++	if err := skuMappingRepo.Create(&skuMapping); err != nil {
++		return fmt.Errorf("create provider sku mapping: %w", err)
++	}
++
++	*imported = true
++	return nil
++}
++
++func findOrCreateProviderCategoryTx(tx *gorm.DB, platform string) (*models.Category, error) {
++	slug := "platform-" + normalizeProviderSlug(platform)
++	var category models.Category
++	if err := tx.Where("slug = ?", slug).First(&category).Error; err != nil {
++		if !errors.Is(err, gorm.ErrRecordNotFound) {
++			return nil, err
++		}
++		category = models.Category{
++			Slug:     slug,
++			NameJSON: localizedText(platform),
++			IsActive: true,
++		}
++		if err := tx.Create(&category).Error; err != nil {
++			return nil, fmt.Errorf("create provider category: %w", err)
++		}
++	}
++	return &category, nil
++}
++
++func (s *ProductMappingService) uniqueProductSlug(base string) (string, error) {
++	if base == "" {
++		base = fmt.Sprintf("provider-product-%d", time.Now().UnixMilli())
++	}
++	for i := 0; i < 100; i++ {
++		candidate := base
++		if i > 0 {
++			candidate = fmt.Sprintf("%s-%d", base, i+1)
++		}
++		count, err := s.productRepo.CountBySlug(candidate, nil)
++		if err != nil {
++			return "", err
++		}
++		if count == 0 {
++			return candidate, nil
++		}
++	}
++	return "", fmt.Errorf("slug conflict after retries: %s", base)
++}
++
++func providerManualFormSchema(provider string) models.JSON {
++	if provider == upstream.CatalogProviderFansGurus {
++		return models.JSON{
++			"fields": []map[string]interface{}{
++				{"key": "link", "type": "url", "label": "Target URL", "required": true},
++			},
++		}
++	}
++	return models.JSON{"fields": []map[string]interface{}{}}
++}
++
++func localizedText(value string) models.JSON {
++	value = strings.TrimSpace(value)
++	return models.JSON{
++		"zh-CN": value,
++		"zh-TW": value,
++		"en-US": value,
++	}
++}
++
++var providerSlugRe = regexp.MustCompile(`[^a-z0-9]+`)
++
++func normalizeProviderSlug(value string) string {
++	value = strings.ToLower(strings.TrimSpace(value))
++	value = providerSlugRe.ReplaceAllString(value, "-")
++	value = strings.Trim(value, "-")
++	if len(value) > 96 {
++		value = strings.Trim(value[:96], "-")
++	}
++	return value
++}
++
++func errorsProductMappingDependencyMissing() error {
++	return errors.New("product mapping service dependency missing")
++}
+diff --git a/internal/service/provider_catalog_import_test.go b/internal/service/provider_catalog_import_test.go
+new file mode 100644
+index 0000000..69ae554
+--- /dev/null
++++ b/internal/service/provider_catalog_import_test.go
+@@ -0,0 +1,197 @@
++package service
++
++import (
++	"testing"
++
++	"github.com/dujiao-next/internal/constants"
++	"github.com/dujiao-next/internal/models"
++	"github.com/dujiao-next/internal/repository"
++	"github.com/dujiao-next/internal/upstream"
++
++	"github.com/glebarez/sqlite"
++	"gorm.io/gorm"
++)
++
++func TestImportProviderCatalogCreatesProductsAndMappings(t *testing.T) {
++	db := setupProviderCatalogImportDB(t)
++	svc := NewProductMappingService(
++		repository.NewProductMappingRepository(db),
++		repository.NewSKUMappingRepository(db),
++		repository.NewProductRepository(db),
++		repository.NewProductSKURepository(db),
++		repository.NewCategoryRepository(db),
++		nil,
++	)
++
++	catalog := upstream.BuildFilteredCatalog(
++		[]upstream.ProviderCatalogItem{
++			{
++				Provider:      upstream.CatalogProviderFansGurus,
++				Code:          "16252",
++				Name:          "Instagram Followers",
++				Category:      "Instagram",
++				UpstreamPrice: "2.00",
++				TargetPrice:   "10.00000000",
++				MinQuantity:   500,
++				MaxQuantity:   10000,
++				Active:        true,
++			},
++			{
++				Provider:      upstream.CatalogProviderFansGurus,
++				Code:          "tg-1",
++				Name:          "Telegram Members",
++				Category:      "Telegram",
++				UpstreamPrice: "1.00",
++				TargetPrice:   "5.00000000",
++				Active:        true,
++			},
++		},
++		[]upstream.ProviderCatalogItem{
++			{
++				Provider:      upstream.CatalogProviderTGX,
++				Code:          "IG-001",
++				Name:          "IG Account",
++				Description:   "Instagram aged account",
++				UpstreamPrice: "100.00",
++				TargetPrice:   "120.00000000",
++				MinQuantity:   1,
++				Active:        true,
++			},
++			{
++				Provider:      upstream.CatalogProviderTGX,
++				Code:          "FB-001",
++				Name:          "Facebook Account",
++				Description:   "Facebook account",
++				UpstreamPrice: "80.00",
++				TargetPrice:   "96.00000000",
++				Active:        true,
++			},
++		},
++	)
++
++	result, err := svc.ImportProviderCatalog(10, catalog)
++	if err != nil {
++		t.Fatalf("ImportProviderCatalog: %v", err)
++	}
++	if result.Imported != 2 || result.Skipped != 0 {
++		t.Fatalf("result=%+v, want imported=2 skipped=0", result)
++	}
++
++	var categories []models.Category
++	if err := db.Find(&categories).Error; err != nil {
++		t.Fatalf("load categories: %v", err)
++	}
++	if len(categories) != 1 || categories[0].Slug != "platform-instagram" {
++		t.Fatalf("categories=%+v, want only platform-instagram", categories)
++	}
++
++	var products []models.Product
++	if err := db.Preload("SKUs").Order("slug ASC").Find(&products).Error; err != nil {
++		t.Fatalf("load products: %v", err)
++	}
++	if len(products) != 2 {
++		t.Fatalf("product count=%d, want 2", len(products))
++	}
++	for _, product := range products {
++		if product.FulfillmentType != constants.FulfillmentTypeUpstream || !product.IsMapped || product.IsActive {
++			t.Fatalf("unexpected product flags: %+v", product)
++		}
++		if len(product.SKUs) != 1 {
++			t.Fatalf("product %s sku count=%d, want 1", product.Slug, len(product.SKUs))
++		}
++	}
++
++	var fansMapping models.ProductMapping
++	if err := db.Where("upstream_product_code = ?", "16252").First(&fansMapping).Error; err != nil {
++		t.Fatalf("load fans mapping: %v", err)
++	}
++	if fansMapping.Provider != upstream.CatalogProviderFansGurus || fansMapping.Platform != "instagram" {
++		t.Fatalf("unexpected fans mapping: %+v", fansMapping)
++	}
++
++	var tgxMapping models.ProductMapping
++	if err := db.Where("upstream_product_code = ?", "IG-001").First(&tgxMapping).Error; err != nil {
++		t.Fatalf("load tgx mapping: %v", err)
++	}
++	if tgxMapping.Provider != upstream.CatalogProviderTGX || tgxMapping.Platform != "instagram" {
++		t.Fatalf("unexpected tgx mapping: %+v", tgxMapping)
++	}
++
++	var skuMappings []models.SKUMapping
++	if err := db.Order("upstream_sku_code ASC").Find(&skuMappings).Error; err != nil {
++		t.Fatalf("load sku mappings: %v", err)
++	}
++	if len(skuMappings) != 2 {
++		t.Fatalf("sku mapping count=%d, want 2", len(skuMappings))
++	}
++	if skuMappings[0].UpstreamSKUCode == "" || skuMappings[1].UpstreamSKUCode == "" {
++		t.Fatalf("sku mappings should keep upstream sku codes: %+v", skuMappings)
++	}
++}
++
++func TestImportProviderCatalogSkipsExistingMapping(t *testing.T) {
++	db := setupProviderCatalogImportDB(t)
++	svc := NewProductMappingService(
++		repository.NewProductMappingRepository(db),
++		repository.NewSKUMappingRepository(db),
++		repository.NewProductRepository(db),
++		repository.NewProductSKURepository(db),
++		repository.NewCategoryRepository(db),
++		nil,
++	)
++
++	catalog := upstream.BuildFilteredCatalog(
++		[]upstream.ProviderCatalogItem{
++			{
++				Provider:      upstream.CatalogProviderFansGurus,
++				Code:          "16252",
++				Name:          "Instagram Followers",
++				Category:      "Instagram",
++				UpstreamPrice: "2.00",
++				TargetPrice:   "10.00000000",
++				Active:        true,
++			},
++		},
++		[]upstream.ProviderCatalogItem{
++			{
++				Provider:      upstream.CatalogProviderTGX,
++				Code:          "IG-001",
++				Name:          "IG Account",
++				Description:   "Instagram aged account",
++				UpstreamPrice: "100.00",
++				TargetPrice:   "120.00000000",
++				Active:        true,
++			},
++		},
++	)
++
++	first, err := svc.ImportProviderCatalog(10, catalog)
++	if err != nil {
++		t.Fatalf("first import: %v", err)
++	}
++	second, err := svc.ImportProviderCatalog(10, catalog)
++	if err != nil {
++		t.Fatalf("second import: %v", err)
++	}
++	if first.Imported != 2 || second.Imported != 0 || second.Skipped != 2 {
++		t.Fatalf("unexpected results: first=%+v second=%+v", first, second)
++	}
++}
++
++func setupProviderCatalogImportDB(t *testing.T) *gorm.DB {
++	t.Helper()
++	db, err := gorm.Open(sqlite.Open("file:"+normalizeProviderSlug(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
++	if err != nil {
++		t.Fatalf("open sqlite: %v", err)
++	}
++	if err := db.AutoMigrate(
++		&models.Category{},
++		&models.Product{},
++		&models.ProductSKU{},
++		&models.ProductMapping{},
++		&models.SKUMapping{},
++	); err != nil {
++		t.Fatalf("auto migrate: %v", err)
++	}
++	return db
++}
