@@ -27,6 +27,9 @@ Success criteria:
 
 ## Phase 2: Source Fit Plan
 
+Status: source fit plan completed on 2026-07-08. Details are recorded in
+`docs/13-source-fit-plan.md`.
+
 Goal: identify exact Dujiao-Next extension points before business changes.
 
 Tasks:
@@ -69,7 +72,7 @@ Tasks:
 - Exclude Telegram-related SKUs.
 - Compute cross-provider platform intersection.
 - Apply pricing:
-  - FansGurus: upstream rate * 5.
+  - FansGurus: upstream rate * 5, preserving the upstream per-1000 quantity basis.
   - TGX: `price` * 1.2.
 - Map active SKUs into Dujiao-Next product/SKU structures.
 
