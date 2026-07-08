@@ -74,6 +74,8 @@ Verification:
 
 ## Phase 4: SKU Sync And Filtering
 
+Status: catalog policy layer completed on 2026-07-08; database import remains pending.
+
 Goal: build the catalog pipeline.
 
 Tasks:
@@ -92,6 +94,22 @@ Success criteria:
 - Telegram SKUs are hidden.
 - Non-intersection platforms are hidden.
 - USD target prices are stored and reproducible.
+
+Completed verification:
+
+- Added a pure catalog policy layer for platform normalization, Telegram
+  exclusion, active-only filtering, cross-provider platform intersection, and
+  provider price helpers.
+- Tests cover platform aliases, Telegram English and Chinese tokens, `tg`
+  boundary matching, inactive upstream items, non-intersection filtering, and
+  FansGurus/TGX price rules.
+- Targeted test passed: `go test ./internal/upstream`.
+
+Remaining implementation:
+
+- Persist raw upstream catalog payloads.
+- Upsert filtered products/SKUs/categories into Dujiao-Next tables.
+- Store mapping metadata needed for FansGurus service IDs and TGX string codes.
 
 ## Phase 5: Order Fulfillment
 
