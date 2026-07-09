@@ -1,0 +1,61 @@
+diff --git a/internal/authz/bootstrap.go b/internal/authz/bootstrap.go
+index f7977a2..559b0c7 100644
+--- a/internal/authz/bootstrap.go
++++ b/internal/authz/bootstrap.go
+@@ -138,6 +138,7 @@ func BuiltinRoleSeeds() []RoleSeed {
+ 				{Object: "/admin/procurement-orders/:id", Action: "GET"},
+ 				{Object: "/admin/procurement-orders/:id/upstream-payload/download", Action: "GET"},
+ 				{Object: "/admin/procurement-orders/:id/retry", Action: "POST"},
++				{Object: "/admin/procurement-orders/:id/sync-status", Action: "POST"},
+ 				{Object: "/admin/procurement-orders/:id/cancel", Action: "POST"},
+ 				{Object: "/admin/reconciliation/run", Action: "POST"},
+ 				{Object: "/admin/reconciliation/jobs", Action: "GET"},
+diff --git a/internal/http/handlers/admin/admin_procurement_order.go b/internal/http/handlers/admin/admin_procurement_order.go
+index cf0ec65..0dc8f2e 100644
+--- a/internal/http/handlers/admin/admin_procurement_order.go
++++ b/internal/http/handlers/admin/admin_procurement_order.go
+@@ -177,6 +177,32 @@ func (h *Handler) RetryProcurementOrder(c *gin.Context) {
+ 	response.Success(c, gin.H{"ok": true})
+ }
+ 
++// SyncProcurementOrderStatus 手动同步采购单状态
++func (h *Handler) SyncProcurementOrderStatus(c *gin.Context) {
++	if h.ProcurementOrderService == nil {
++		shared.RespondErrorWithMsg(c, response.CodeInternal, "service not available", nil)
++		return
++	}
++	id, err := shared.ParseParamUint(c, "id")
++	if err != nil {
++		shared.RespondError(c, response.CodeBadRequest, "error.bad_request", err)
++		return
++	}
++	if err := h.ProcurementOrderService.PollUpstreamStatus(id); err != nil {
++		if errors.Is(err, service.ErrProcurementNotFound) {
++			shared.RespondError(c, response.CodeNotFound, "error.procurement_not_found", nil)
++			return
++		}
++		if errors.Is(err, service.ErrConnectionNotFound) {
++			shared.RespondError(c, response.CodeNotFound, "error.connection_not_found", nil)
++			return
++		}
++		shared.RespondError(c, response.CodeInternal, "error.procurement_fetch_failed", err)
++		return
++	}
++	response.Success(c, gin.H{"ok": true})
++}
++
+ // CancelProcurementOrder 手动取消采购单
+ func (h *Handler) CancelProcurementOrder(c *gin.Context) {
+ 	if h.ProcurementOrderService == nil {
+diff --git a/internal/router/router.go b/internal/router/router.go
+index d86e34e..bcd8069 100644
+--- a/internal/router/router.go
++++ b/internal/router/router.go
+@@ -562,6 +562,7 @@ func SetupRouter(cfg *config.Config, c *provider.Container) *gin.Engine {
+ 				authorized.GET("/procurement-orders/:id", adminHandler.GetProcurementOrder)
+ 				authorized.GET("/procurement-orders/:id/upstream-payload/download", adminHandler.DownloadProcurementUpstreamPayload)
+ 				authorized.POST("/procurement-orders/:id/retry", adminHandler.RetryProcurementOrder)
++				authorized.POST("/procurement-orders/:id/sync-status", adminHandler.SyncProcurementOrderStatus)
+ 				authorized.POST("/procurement-orders/:id/cancel", adminHandler.CancelProcurementOrder)
+ 
+ 				// 对账管理

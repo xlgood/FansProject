@@ -1,0 +1,131 @@
+diff --git a/src/api/admin.ts b/src/api/admin.ts
+index 3827163..6f24e75 100644
+--- a/src/api/admin.ts
++++ b/src/api/admin.ts
+@@ -569,6 +569,7 @@ export const adminAPI = {
+   getProcurementOrder: (id: number) => api.get(`/admin/procurement-orders/${id}`),
+   downloadProcurementUpstreamPayload: (id: number) => api.get(`/admin/procurement-orders/${id}/upstream-payload/download`, { blob: true }),
+   retryProcurementOrder: (id: number) => api.post(`/admin/procurement-orders/${id}/retry`),
++  syncProcurementOrderStatus: (id: number) => api.post(`/admin/procurement-orders/${id}/sync-status`),
+   cancelProcurementOrder: (id: number) => api.post(`/admin/procurement-orders/${id}/cancel`),
+ 
+   // 对账管理
+diff --git a/src/i18n/index.ts b/src/i18n/index.ts
+index 79682ac..6205b07 100644
+--- a/src/i18n/index.ts
++++ b/src/i18n/index.ts
+@@ -91,6 +91,10 @@ const messages = {
+         cancel: '取消',
+         cancelOrder: '取消采购单',
+         retryConfirm: '确认重试采购单 #{id}？',
++        syncStatus: '同步状态',
++        syncingStatus: '同步中...',
++        syncStatusConfirm: '确认同步采购单 #{id} 的最新状态？',
++        syncStatusSuccess: '状态同步已完成',
+         cancelConfirm: '确认取消采购单 #{id}？',
+         retrySuccess: '重试已提交',
+         cancelSuccess: '取消成功',
+@@ -4356,6 +4360,10 @@ const messages = {
+         cancel: '取消',
+         cancelOrder: '取消採購單',
+         retryConfirm: '確認重試採購單 #{id}？',
++        syncStatus: '同步狀態',
++        syncingStatus: '同步中...',
++        syncStatusConfirm: '確認同步採購單 #{id} 的最新狀態？',
++        syncStatusSuccess: '狀態同步已完成',
+         cancelConfirm: '確認取消採購單 #{id}？',
+         retrySuccess: '重試已提交',
+         cancelSuccess: '取消成功',
+@@ -8621,6 +8629,10 @@ const messages = {
+         cancel: 'Cancel',
+         cancelOrder: 'Cancel Procurement Order',
+         retryConfirm: 'Retry procurement order #{id}?',
++        syncStatus: 'Sync Status',
++        syncingStatus: 'Syncing...',
++        syncStatusConfirm: 'Sync latest status for procurement order #{id}?',
++        syncStatusSuccess: 'Status sync completed',
+         cancelConfirm: 'Cancel procurement order #{id}?',
+         retrySuccess: 'Retry submitted',
+         cancelSuccess: 'Canceled successfully',
+diff --git a/src/views/admin/ProcurementOrders.vue b/src/views/admin/ProcurementOrders.vue
+index 701fc4a..5d8c296 100644
+--- a/src/views/admin/ProcurementOrders.vue
++++ b/src/views/admin/ProcurementOrders.vue
+@@ -71,6 +71,7 @@ const showDetail = ref(false)
+ const detailOrder = ref<ProcurementOrderWithRelations | null>(null)
+ const detailLoading = ref(false)
+ const retryingId = ref<number | null>(null)
++const syncingId = ref<number | null>(null)
+ const cancelingId = ref<number | null>(null)
+ const procurementDownloading = ref(false)
+ 
+@@ -254,6 +255,28 @@ const handleRetry = async (order: ProcurementOrderWithRelations) => {
+   }
+ }
+ 
++const handleSyncStatus = async (order: ProcurementOrderWithRelations) => {
++  const confirmed = await confirmAction({
++    description: t('procurement.actions.syncStatusConfirm', { id: order.id }),
++    confirmText: t('procurement.actions.syncStatus'),
++  })
++  if (!confirmed) return
++  syncingId.value = order.id
++  try {
++    await adminAPI.syncProcurementOrderStatus(order.id)
++    notifySuccess(t('procurement.actions.syncStatusSuccess'))
++    fetchOrders(pagination.page)
++    fetchStats()
++    if (showDetail.value && detailOrder.value?.id === order.id) {
++      openDetail(order)
++    }
++  } catch (err: any) {
++    notifyError(err?.response?.data?.message || err?.message)
++  } finally {
++    syncingId.value = null
++  }
++}
++
+ const handleCancel = async (order: ProcurementOrderWithRelations) => {
+   const confirmed = await confirmAction({
+     description: t('procurement.actions.cancelConfirm', { id: order.id }),
+@@ -411,6 +434,7 @@ const profitClass = (order: ProcurementOrderWithRelations) => {
+ }
+ 
+ const canRetry = (status: string) => ['failed', 'rejected'].includes(status)
++const canSyncStatus = (status: string) => ['accepted'].includes(status)
+ const canCancel = (status: string) => ['pending', 'submitted', 'accepted', 'failed'].includes(status)
+ 
+ onMounted(() => {
+@@ -594,6 +618,16 @@ onMounted(() => {
+               >
+                 {{ t('procurement.actions.retry') }}
+               </Button>
++              <Button
++                v-if="canSyncStatus(order.status)"
++                size="sm"
++                variant="outline"
++                class="h-7 text-xs"
++                :disabled="syncingId === order.id"
++                @click="handleSyncStatus(order)"
++              >
++                {{ syncingId === order.id ? t('procurement.actions.syncingStatus') : t('procurement.actions.syncStatus') }}
++              </Button>
+               <Button
+                 v-if="canCancel(order.status)"
+                 size="sm"
+@@ -891,6 +925,15 @@ onMounted(() => {
+             >
+               {{ t('procurement.actions.retry') }}
+             </Button>
++            <Button
++              v-if="canSyncStatus(detailOrder.status)"
++              variant="outline"
++              class="w-full sm:w-auto"
++              :disabled="syncingId === detailOrder.id"
++              @click="handleSyncStatus(detailOrder)"
++            >
++              {{ syncingId === detailOrder.id ? t('procurement.actions.syncingStatus') : t('procurement.actions.syncStatus') }}
++            </Button>
+             <Button
+               v-if="canCancel(detailOrder.status)"
+               variant="destructive"

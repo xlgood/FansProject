@@ -190,6 +190,11 @@ Completed verification:
   - parent order details surface retryable child-order fulfillment failures;
   - classic and vault frontends show a localized `重新提交` / `Retry submission`
     action without exposing upstream/API/provider wording.
+- Added an admin-side manual procurement status sync action:
+  - backend exposes `POST /admin/procurement-orders/:id/sync-status`;
+  - integration role can call the new endpoint;
+  - admin procurement list/detail show `同步状态` / `Sync Status` for accepted
+    procurement orders.
 - Targeted tests passed:
   - `go test ./internal/service -run 'TestSubmitToUpstream_(FansGurusProvider|TGXProviderImmediateSecret|Success|NonRetryableError_Rejects|RetryableError_Retries)'`
   - `go test ./internal/service -run 'TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
@@ -197,12 +202,16 @@ Completed verification:
   - `go test ./internal/upstream`
   - `go test ./internal/service -run 'TestSubmitToUpstream_(FansGurusProvider|FansGurusUnavailableFailsForUserWithoutRetry|TGXProviderImmediateSecret|TGXProviderRecoversByRequestNo)'`
   - `go test ./internal/http/handlers/public ./internal/dto`
+  - `go test ./internal/http/handlers/admin ./internal/router`
+  - `go test ./internal/service -run 'TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
   - `cd user && ./node_modules/.bin/vue-tsc -b`
   - `cd user && ./node_modules/.bin/vite build`
+  - `cd admin && ./node_modules/.bin/vue-tsc -b`
+  - `cd admin && ./node_modules/.bin/vite build`
 
 Remaining implementation:
 
-- Expose provider fulfillment status and retry/cancel tools in admin.
+- Tighten provider-specific admin cancel behavior and diagnostics where needed.
 
 ## Phase 6: Frontend And Admin
 
