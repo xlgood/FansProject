@@ -1,0 +1,131 @@
+diff --git a/src/composables/useOrderDisplayHelpers.ts b/src/composables/useOrderDisplayHelpers.ts
+index 8b90fa6..f35645b 100644
+--- a/src/composables/useOrderDisplayHelpers.ts
++++ b/src/composables/useOrderDisplayHelpers.ts
+@@ -62,6 +62,13 @@ export function useOrderDisplayHelpers(order: Ref<any>) {
+   }
+   const fulfillmentTypeLabelText = (type: string) => fulfillmentTypeLabel(t, type, 'orderDetail')
+   const fulfillmentStatusLabelText = (status: string) => fulfillmentStatusLabel(t, status, 'orderDetail')
++  const fulfillmentErrorText = (code?: string) => {
++    const normalized = String(code || '').trim()
++    if (!normalized) return ''
++    const key = `orderDetail.fulfillmentErrors.${normalized}`
++    const translated = t(key)
++    return translated === key ? t('orderDetail.fulfillmentErrors.default') : translated
++  }
+ 
+   const resolvedChildStatus = (child: any) => {
+     const status = String(child?.status || '').trim()
+@@ -306,6 +313,7 @@ export function useOrderDisplayHelpers(order: Ref<any>) {
+     statusPillClass,
+     fulfillmentTypeLabelText,
+     fulfillmentStatusLabelText,
++    fulfillmentErrorText,
+     resolvedChildStatus,
+     isFulfillmentTruncated,
+     // 文本/格式化
+diff --git a/src/i18n/index.ts b/src/i18n/index.ts
+index 7f7f31e..9f960a2 100644
+--- a/src/i18n/index.ts
++++ b/src/i18n/index.ts
+@@ -1598,6 +1598,10 @@ const messages = {
+                 pending: '待交付',
+                 delivered: '已交付',
+             },
++            fulfillmentErrors: {
++                provider_submit_temporarily_unavailable: '当前服务繁忙，本次提交未完成。请稍后重试或联系客服处理。',
++                default: '本次交付暂时未能完成，请稍后重试或联系客服处理。',
++            },
+             fulfillmentCopy: '复制内容',
+             fulfillmentCopied: '已复制',
+             fulfillmentDownload: '下载交付内容',
+@@ -3332,6 +3336,10 @@ const messages = {
+                 pending: '待交付',
+                 delivered: '已交付',
+             },
++            fulfillmentErrors: {
++                provider_submit_temporarily_unavailable: '目前服務繁忙，本次提交未完成。請稍後重試或聯絡客服處理。',
++                default: '本次交付暫時未能完成，請稍後重試或聯絡客服處理。',
++            },
+             fulfillmentCopy: '複製內容',
+             fulfillmentCopied: '已複製',
+             fulfillmentDownload: '下載交付內容',
+@@ -5019,6 +5027,10 @@ const messages = {
+                 pending: 'Pending',
+                 delivered: 'Delivered',
+             },
++            fulfillmentErrors: {
++                provider_submit_temporarily_unavailable: 'The service is busy right now, so this submission could not be completed. Please try again later or contact support.',
++                default: 'This fulfillment could not be completed right now. Please try again later or contact support.',
++            },
+             fulfillmentCopy: 'Copy',
+             fulfillmentCopied: 'Copied',
+             fulfillmentDownload: 'Download',
+diff --git a/src/templates/vault/components/VaultOrderBody.vue b/src/templates/vault/components/VaultOrderBody.vue
+index 0f7a700..b5d4dd0 100644
+--- a/src/templates/vault/components/VaultOrderBody.vue
++++ b/src/templates/vault/components/VaultOrderBody.vue
+@@ -1,5 +1,9 @@
+ <template>
+   <div class="grid gap-[18px]">
++    <section v-if="order.fulfillment_error" class="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-[13px] font-semibold text-warning">
++      {{ fulfillmentErrorText(order.fulfillment_error) }}
++    </section>
++
+     <!-- 金额明细 -->
+     <section class="rounded-xl border bg-card p-[22px]">
+       <h2 class="mb-4 text-lg font-bold">{{ t('orderDetail.amountTitle') }}</h2>
+@@ -163,6 +167,7 @@ const { t } = useI18n()
+ const {
+   showTimeCard, showRefundRecordsCard, refundRecords, resolvedChildStatus,
+   statusLabel, statusVariant, formatDate, refundReasonText,
++  fulfillmentErrorText,
+   formatMoney, formatDiscountMoney, hasDiscountAmount, hasAmount,
+ } = useOrderDisplayHelpers(toRef(props, 'order'))
+ </script>
+diff --git a/src/views/GuestOrderDetail.vue b/src/views/GuestOrderDetail.vue
+index f235b03..6a3f574 100644
+--- a/src/views/GuestOrderDetail.vue
++++ b/src/views/GuestOrderDetail.vue
+@@ -65,6 +65,10 @@
+           </div>
+         </div>
+ 
++        <div v-if="order.fulfillment_error" class="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
++          {{ fulfillmentErrorText(order.fulfillment_error) }}
++        </div>
++
+         <div class="rounded-2xl border bg-card shadow-sm p-6">
+           <h2 class="text-lg font-bold mb-4">{{ t('orderDetail.amountTitle') }}</h2>
+           <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+@@ -432,6 +436,7 @@ const {
+   loading, order, authError, auth, showAuthForm, handleAuthSubmit, clearAuth,
+   fulfillmentDownloading, handleDownloadFulfillment,
+   statusLabel, statusVariant, fulfillmentTypeLabelText, fulfillmentStatusLabelText,
++  fulfillmentErrorText,
+   formatDate, getLocalizedText, formatMoney, formatDiscountMoney, hasDiscountAmount,
+   refundReasonText, showRefundRecordsCard, refundRecords, showTimeCard,
+   orderItemImage, orderItemSkuText, manualSubmissionRows,
+diff --git a/src/views/OrderDetail.vue b/src/views/OrderDetail.vue
+index 174b3f6..dcae16b 100644
+--- a/src/views/OrderDetail.vue
++++ b/src/views/OrderDetail.vue
+@@ -79,6 +79,10 @@
+           </div>
+         </div>
+ 
++        <div v-if="order.fulfillment_error" class="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
++          {{ fulfillmentErrorText(order.fulfillment_error) }}
++        </div>
++
+         <div class="rounded-2xl border bg-card shadow-sm p-6">
+           <h2 class="text-lg font-bold mb-4">{{ t('orderDetail.amountTitle') }}</h2>
+           <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+@@ -450,6 +454,7 @@ const { t } = useI18n()
+ const {
+   loading, order, debouncedLoadOrder, cancelOrder,
+   statusLabel, statusVariant, fulfillmentTypeLabelText, fulfillmentStatusLabelText,
++  fulfillmentErrorText,
+   formatDate, getLocalizedText, formatMoney, formatDiscountMoney, hasDiscountAmount, hasAmount,
+   refundReasonText, showRefundRecordsCard, refundRecords, showTimeCard,
+   orderItemImage, orderItemSkuText, manualSubmissionRows,

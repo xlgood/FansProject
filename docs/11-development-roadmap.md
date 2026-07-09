@@ -173,15 +173,28 @@ Completed verification:
 - Provider polling maps delivered/canceled/refunded states into the existing
   local procurement callback flow.
 - TGX pending query results keep procurement orders in `accepted`.
+- Hardened provider submit retry/idempotency behavior:
+  - FansGurus temporary unavailable submit results stop in `failed` with a
+    user-safe error code instead of auto-retrying and risking duplicate upstream
+    orders.
+  - TGX ambiguous submit results first query by `request_no`; recovered trades
+    continue through the normal accepted/delivered flow.
+  - TGX unresolved unavailable submits use the same user-safe failed state
+    without `next_retry_at`.
+  - Public order detail responses expose `fulfillment_error` for localized
+    customer-facing messages.
 - Targeted tests passed:
   - `go test ./internal/service -run 'TestSubmitToUpstream_(FansGurusProvider|TGXProviderImmediateSecret|Success|NonRetryableError_Rejects|RetryableError_Retries)'`
   - `go test ./internal/service -run 'TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
   - `go test ./internal/service -run 'Test(SyncProviderCatalog|ImportProviderCatalog|CreateForOrder)'`
   - `go test ./internal/upstream`
+  - `go test ./internal/service -run 'TestSubmitToUpstream_(FansGurusProvider|FansGurusUnavailableFailsForUserWithoutRetry|TGXProviderImmediateSecret|TGXProviderRecoversByRequestNo)'`
+  - `go test ./internal/http/handlers/public ./internal/dto`
+  - `cd user && ./node_modules/.bin/vue-tsc -b`
+  - `cd user && ./node_modules/.bin/vite build`
 
 Remaining implementation:
 
-- Harden retry/idempotency behavior around provider timeouts.
 - Expose provider fulfillment status and retry tools in admin.
 
 ## Phase 6: Frontend And Admin
