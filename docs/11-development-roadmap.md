@@ -195,6 +195,11 @@ Completed verification:
   - integration role can call the new endpoint;
   - admin procurement list/detail show `同步状态` / `Sync Status` for accepted
     procurement orders.
+- Tightened provider procurement cancellation:
+  - FansGurus/TGX submitted or accepted procurement orders no longer get marked
+    locally canceled without a provider-side cancel capability;
+  - admin cancel actions are limited to pending, failed, and rejected
+    procurement orders.
 - Targeted tests passed:
   - `go test ./internal/service -run 'TestSubmitToUpstream_(FansGurusProvider|TGXProviderImmediateSecret|Success|NonRetryableError_Rejects|RetryableError_Retries)'`
   - `go test ./internal/service -run 'TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
@@ -204,6 +209,7 @@ Completed verification:
   - `go test ./internal/http/handlers/public ./internal/dto`
   - `go test ./internal/http/handlers/admin ./internal/router`
   - `go test ./internal/service -run 'TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
+  - `go test ./internal/service -run 'TestCancelManual_(ProviderAcceptedUnsupported|FailedLocalOnlyCancels)'`
   - `cd user && ./node_modules/.bin/vue-tsc -b`
   - `cd user && ./node_modules/.bin/vite build`
   - `cd admin && ./node_modules/.bin/vue-tsc -b`
@@ -211,7 +217,7 @@ Completed verification:
 
 Remaining implementation:
 
-- Tighten provider-specific admin cancel behavior and diagnostics where needed.
+- Improve admin diagnostics for provider error codes and next-action hints.
 
 ## Phase 6: Frontend And Admin
 

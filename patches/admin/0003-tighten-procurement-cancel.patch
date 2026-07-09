@@ -1,0 +1,44 @@
+diff --git a/src/i18n/index.ts b/src/i18n/index.ts
+index 6205b07..6db62b5 100644
+--- a/src/i18n/index.ts
++++ b/src/i18n/index.ts
+@@ -95,7 +95,7 @@ const messages = {
+         syncingStatus: '同步中...',
+         syncStatusConfirm: '确认同步采购单 #{id} 的最新状态？',
+         syncStatusSuccess: '状态同步已完成',
+-        cancelConfirm: '确认取消采购单 #{id}？',
++        cancelConfirm: '确认取消采购单 #{id}？仅未提交或失败的采购单可本地取消。',
+         retrySuccess: '重试已提交',
+         cancelSuccess: '取消成功',
+       },
+@@ -4364,7 +4364,7 @@ const messages = {
+         syncingStatus: '同步中...',
+         syncStatusConfirm: '確認同步採購單 #{id} 的最新狀態？',
+         syncStatusSuccess: '狀態同步已完成',
+-        cancelConfirm: '確認取消採購單 #{id}？',
++        cancelConfirm: '確認取消採購單 #{id}？僅未提交或失敗的採購單可本地取消。',
+         retrySuccess: '重試已提交',
+         cancelSuccess: '取消成功',
+       },
+@@ -8633,7 +8633,7 @@ const messages = {
+         syncingStatus: 'Syncing...',
+         syncStatusConfirm: 'Sync latest status for procurement order #{id}?',
+         syncStatusSuccess: 'Status sync completed',
+-        cancelConfirm: 'Cancel procurement order #{id}?',
++        cancelConfirm: 'Cancel procurement order #{id}? Only unsubmitted or failed procurement orders can be canceled locally.',
+         retrySuccess: 'Retry submitted',
+         cancelSuccess: 'Canceled successfully',
+       },
+diff --git a/src/views/admin/ProcurementOrders.vue b/src/views/admin/ProcurementOrders.vue
+index 5d8c296..4183030 100644
+--- a/src/views/admin/ProcurementOrders.vue
++++ b/src/views/admin/ProcurementOrders.vue
+@@ -435,7 +435,7 @@ const profitClass = (order: ProcurementOrderWithRelations) => {
+ 
+ const canRetry = (status: string) => ['failed', 'rejected'].includes(status)
+ const canSyncStatus = (status: string) => ['accepted'].includes(status)
+-const canCancel = (status: string) => ['pending', 'submitted', 'accepted', 'failed'].includes(status)
++const canCancel = (status: string) => ['pending', 'failed', 'rejected'].includes(status)
+ 
+ onMounted(() => {
+   fetchConnections()

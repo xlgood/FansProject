@@ -1,0 +1,153 @@
+diff --git a/internal/http/handlers/admin/admin_procurement_order.go b/internal/http/handlers/admin/admin_procurement_order.go
+index 0dc8f2e..017e5ad 100644
+--- a/internal/http/handlers/admin/admin_procurement_order.go
++++ b/internal/http/handlers/admin/admin_procurement_order.go
+@@ -223,6 +223,10 @@ func (h *Handler) CancelProcurementOrder(c *gin.Context) {
+ 			shared.RespondErrorWithMsg(c, response.CodeBadRequest, err.Error(), nil)
+ 			return
+ 		}
++		if errors.Is(err, service.ErrProcurementCancelUnsupported) {
++			shared.RespondErrorWithMsg(c, response.CodeBadRequest, err.Error(), nil)
++			return
++		}
+ 		shared.RespondError(c, response.CodeInternal, "error.procurement_cancel_failed", err)
+ 		return
+ 	}
+diff --git a/internal/service/procurement_order_service.go b/internal/service/procurement_order_service.go
+index 4d179b2..47a097a 100644
+--- a/internal/service/procurement_order_service.go
++++ b/internal/service/procurement_order_service.go
+@@ -28,6 +28,7 @@ var (
+ 	ErrProcurementExists            = errors.New("procurement order already exists")
+ 	ErrProcurementStatusInvalid     = errors.New("procurement order status invalid")
+ 	ErrProcurementRetryDenied       = errors.New("procurement order retry denied")
++	ErrProcurementCancelUnsupported = errors.New("procurement order cancel unsupported")
+ )
+ 
+ const providerSubmitTemporarilyUnavailable = "provider_submit_temporarily_unavailable"
+@@ -1584,22 +1585,29 @@ func (s *ProcurementOrderService) CancelManual(id uint) error {
+ 		return ErrProcurementStatusInvalid
+ 	}
+ 
+-	// 已被上游接受：尝试取消上游订单
+-	if procOrder.Status == "accepted" && procOrder.UpstreamOrderID > 0 {
++	if procOrder.Status == constants.ProcurementStatusSubmitted ||
++		procOrder.Status == constants.ProcurementStatusAccepted {
+ 		conn, err := s.connSvc.GetByID(procOrder.ConnectionID)
+-		if err == nil && conn != nil {
+-			adapter, adErr := s.connSvc.GetAdapter(conn)
+-			if adErr == nil {
+-				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+-				defer cancel()
+-				if cancelErr := adapter.CancelOrder(ctx, procOrder.UpstreamOrderID); cancelErr != nil {
+-					logger.Warnw("procurement_cancel_upstream_failed",
+-						"procurement_order_id", procOrder.ID,
+-						"upstream_order_id", procOrder.UpstreamOrderID,
+-						"error", cancelErr,
+-					)
+-				}
+-			}
++		if err != nil {
++			return fmt.Errorf("load connection: %w", err)
++		}
++		if conn == nil {
++			return ErrConnectionNotFound
++		}
++		if conn.Protocol == constants.ConnectionProtocolFansGurus || conn.Protocol == constants.ConnectionProtocolTGXAccount {
++			return ErrProcurementCancelUnsupported
++		}
++		if procOrder.Status == constants.ProcurementStatusSubmitted || procOrder.UpstreamOrderID == 0 {
++			return ErrProcurementCancelUnsupported
++		}
++		adapter, adErr := s.connSvc.GetAdapter(conn)
++		if adErr != nil {
++			return fmt.Errorf("get adapter: %w", adErr)
++		}
++		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
++		defer cancel()
++		if cancelErr := adapter.CancelOrder(ctx, procOrder.UpstreamOrderID); cancelErr != nil {
++			return fmt.Errorf("cancel upstream order: %w", cancelErr)
+ 		}
+ 	}
+ 
+diff --git a/internal/service/procurement_order_service_test.go b/internal/service/procurement_order_service_test.go
+index 7b9b0e2..b77367e 100644
+--- a/internal/service/procurement_order_service_test.go
++++ b/internal/service/procurement_order_service_test.go
+@@ -1241,6 +1241,76 @@ func TestHandleSubmitFailure_MaxRetriesExhausted(t *testing.T) {
+ 	}
+ }
+ 
++func TestCancelManual_ProviderAcceptedUnsupported(t *testing.T) {
++	db := setupProcurementTestDB(t)
++
++	order := createProcTestOrder(t, db, "PROC-CANCEL-PROVIDER-001", constants.OrderStatusFulfilling, constants.FulfillmentTypeUpstream)
++	conn := &models.SiteConnection{
++		Name:     "FansGurus",
++		Protocol: constants.ConnectionProtocolFansGurus,
++		BaseURL:  "https://fansgurus.test/api",
++		ApiKey:   "test-key",
++		Status:   constants.ConnectionStatusActive,
++	}
++	if err := db.Create(conn).Error; err != nil {
++		t.Fatalf("create connection: %v", err)
++	}
++	proc := createTestProcurementOrder(t, db, conn.ID, order.ID, order.OrderNo, constants.ProcurementStatusAccepted)
++	if err := db.Model(proc).Updates(map[string]interface{}{
++		"upstream_order_id": uint(123),
++		"upstream_order_no": "123",
++	}).Error; err != nil {
++		t.Fatalf("seed procurement upstream id: %v", err)
++	}
++
++	connSvc := NewSiteConnectionService(repository.NewSiteConnectionRepository(db), "test-key", t.TempDir())
++	svc := newTestProcurementService(db, connSvc)
++
++	if err := svc.CancelManual(proc.ID); err != ErrProcurementCancelUnsupported {
++		t.Fatalf("CancelManual error=%v, want %v", err, ErrProcurementCancelUnsupported)
++	}
++
++	var updatedProc models.ProcurementOrder
++	if err := db.First(&updatedProc, proc.ID).Error; err != nil {
++		t.Fatalf("load procurement: %v", err)
++	}
++	if updatedProc.Status != constants.ProcurementStatusAccepted {
++		t.Fatalf("status=%s, want %s", updatedProc.Status, constants.ProcurementStatusAccepted)
++	}
++}
++
++func TestCancelManual_FailedLocalOnlyCancels(t *testing.T) {
++	db := setupProcurementTestDB(t)
++
++	order := createProcTestOrder(t, db, "PROC-CANCEL-FAILED-001", constants.OrderStatusPaid, constants.FulfillmentTypeUpstream)
++	conn := &models.SiteConnection{
++		Name:     "TGX",
++		Protocol: constants.ConnectionProtocolTGXAccount,
++		BaseURL:  "https://tgx.test/shared",
++		ApiKey:   "app-id",
++		Status:   constants.ConnectionStatusActive,
++	}
++	if err := db.Create(conn).Error; err != nil {
++		t.Fatalf("create connection: %v", err)
++	}
++	proc := createTestProcurementOrder(t, db, conn.ID, order.ID, order.OrderNo, constants.ProcurementStatusFailed)
++
++	connSvc := NewSiteConnectionService(repository.NewSiteConnectionRepository(db), "test-key", t.TempDir())
++	svc := newTestProcurementService(db, connSvc)
++
++	if err := svc.CancelManual(proc.ID); err != nil {
++		t.Fatalf("CancelManual: %v", err)
++	}
++
++	var updatedProc models.ProcurementOrder
++	if err := db.First(&updatedProc, proc.ID).Error; err != nil {
++		t.Fatalf("load procurement: %v", err)
++	}
++	if updatedProc.Status != constants.ProcurementStatusCanceled {
++		t.Fatalf("status=%s, want %s", updatedProc.Status, constants.ProcurementStatusCanceled)
++	}
++}
++
+ // ── CreateForOrder tests ──
+ 
+ func TestCreateForOrder_SkipsNonUpstreamItems(t *testing.T) {
