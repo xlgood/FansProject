@@ -207,6 +207,12 @@ Completed verification:
     connection config, balance/quota, stock, unsupported cancellation, and
     unknown fallback cases in Simplified Chinese, Traditional Chinese, and
     English.
+- Confirmed automatic periodic status sync/worker coverage:
+  - worker startup registers `procurement:sync_accepted` every 30 minutes when
+    `ProcurementOrderService` is available;
+  - the worker task calls `SyncAcceptedOrders()` without admin interaction;
+  - service coverage verifies accepted FansGurus procurement orders advance to
+    fulfilled and the local order advances to delivered.
 - Targeted tests passed:
   - `go test ./internal/service -run 'TestSubmitToUpstream_(FansGurusProvider|TGXProviderImmediateSecret|Success|NonRetryableError_Rejects|RetryableError_Retries)'`
   - `go test ./internal/service -run 'TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
@@ -217,6 +223,8 @@ Completed verification:
   - `go test ./internal/http/handlers/admin ./internal/router`
   - `go test ./internal/service -run 'TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
   - `go test ./internal/service -run 'TestCancelManual_(ProviderAcceptedUnsupported|FailedLocalOnlyCancels)'`
+  - `go test ./internal/service -run 'TestSyncAcceptedOrders_FansGurusCompleted|TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
+  - `go test ./internal/worker`
   - `cd user && ./node_modules/.bin/vue-tsc -b`
   - `cd user && ./node_modules/.bin/vite build`
   - `cd admin && ./node_modules/.bin/vue-tsc -b`
@@ -224,7 +232,6 @@ Completed verification:
 
 Remaining implementation:
 
-- Confirm automatic periodic status polling/worker coverage.
 - Run an end-to-end local mock purchase flow.
 
 ## Phase 6: Frontend And Admin

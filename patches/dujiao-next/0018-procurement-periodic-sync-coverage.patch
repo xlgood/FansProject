@@ -1,0 +1,80 @@
+diff --git a/internal/service/procurement_order_service_test.go b/internal/service/procurement_order_service_test.go
+index b77367e..451f522 100644
+--- a/internal/service/procurement_order_service_test.go
++++ b/internal/service/procurement_order_service_test.go
+@@ -1518,6 +1518,54 @@ func TestPollUpstreamStatus_FansGurusCompleted(t *testing.T) {
+ 	}
+ }
+ 
++func TestSyncAcceptedOrders_FansGurusCompleted(t *testing.T) {
++	db := setupProcurementTestDB(t)
++
++	order := createProcTestOrder(t, db, "PROC-SYNC-FG-001", constants.OrderStatusFulfilling, constants.FulfillmentTypeUpstream)
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if err := r.ParseForm(); err != nil {
++			t.Fatalf("ParseForm: %v", err)
++		}
++		if got := r.FormValue("action"); got != "status" {
++			t.Fatalf("action=%s, want status", got)
++		}
++		if got := r.FormValue("order"); got != "9989" {
++			t.Fatalf("order=%s, want 9989", got)
++		}
++		w.Header().Set("Content-Type", "application/json")
++		_ = json.NewEncoder(w).Encode(map[string]string{"status": "Completed", "charge": "0.50", "currency": "USD"})
++	}))
++	defer server.Close()
++
++	connSvc := NewSiteConnectionService(repository.NewSiteConnectionRepository(db), "test-key", t.TempDir())
++	conn, err := connSvc.Create(CreateConnectionInput{
++		Name: "fansgurus", BaseURL: server.URL,
++		ApiKey: "fans-key", ApiSecret: "unused", Protocol: constants.ConnectionProtocolFansGurus,
++	})
++	if err != nil {
++		t.Fatalf("create connection: %v", err)
++	}
++	proc := createTestProcurementOrder(t, db, conn.ID, order.ID, order.OrderNo, constants.ProcurementStatusAccepted)
++	db.Model(proc).Updates(map[string]interface{}{
++		"upstream_order_id": uint(9989),
++		"upstream_order_no": "9989",
++	})
++	svc := newTestProcurementService(db, connSvc)
++
++	svc.SyncAcceptedOrders()
++
++	var updatedProc models.ProcurementOrder
++	db.First(&updatedProc, proc.ID)
++	if updatedProc.Status != constants.ProcurementStatusFulfilled {
++		t.Fatalf("procurement status=%s, want %s", updatedProc.Status, constants.ProcurementStatusFulfilled)
++	}
++	var updatedOrder models.Order
++	db.First(&updatedOrder, order.ID)
++	if updatedOrder.Status != constants.OrderStatusDelivered {
++		t.Fatalf("order status=%s, want %s", updatedOrder.Status, constants.OrderStatusDelivered)
++	}
++}
++
+ func TestPollUpstreamStatus_TGXQueryDeliveredSecret(t *testing.T) {
+ 	db := setupProcurementTestDB(t)
+ 
+diff --git a/internal/worker/asynq_worker_test.go b/internal/worker/asynq_worker_test.go
+index d7ea2b0..8abc5ef 100644
+--- a/internal/worker/asynq_worker_test.go
++++ b/internal/worker/asynq_worker_test.go
+@@ -35,6 +35,16 @@ func TestBuildBotNotifyRequestURLReplacesOrderPaidPath(t *testing.T) {
+ 	}
+ }
+ 
++func TestProcurementSyncAcceptedTaskType(t *testing.T) {
++	task := queue.NewProcurementSyncAcceptedTask()
++	if task.Type() != queue.TaskProcurementSyncAccepted {
++		t.Fatalf("task type=%s, want %s", task.Type(), queue.TaskProcurementSyncAccepted)
++	}
++	if len(task.Payload()) != 0 {
++		t.Fatalf("expected empty payload, got %q", string(task.Payload()))
++	}
++}
++
+ func TestBuildOrderFulfillmentEmailPayloadNilOrder(t *testing.T) {
+ 	if got := buildOrderFulfillmentEmailPayload(nil); got != "" {
+ 		t.Fatalf("expected empty payload for nil order, got %q", got)
