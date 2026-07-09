@@ -138,6 +138,8 @@ Remaining implementation:
 
 ## Phase 5: Order Fulfillment
 
+Status: provider procurement submit path started on 2026-07-09.
+
 Goal: connect paid local orders to upstream fulfillment.
 
 Tasks:
@@ -153,6 +155,29 @@ Success criteria:
 - Paid order is not lost on upstream failure.
 - Retry does not duplicate upstream orders.
 - TGX delivered secrets are access-controlled.
+
+Completed verification:
+
+- Existing paid-order hook already creates procurement orders for upstream
+  fulfillment items.
+- Added provider-specific procurement submit handling for `fansgurus` and
+  `tgx-account` connections.
+- FansGurus submit uses the mapped service ID, order quantity, and manual form
+  `link`.
+- TGX submit uses mapped `shared_code|race`, order quantity, order number as
+  `request_no`, and manual form widget fields.
+- TGX immediate secrets are stored as upstream fulfillment payloads.
+- Targeted tests passed:
+  - `go test ./internal/service -run 'TestSubmitToUpstream_(FansGurusProvider|TGXProviderImmediateSecret|Success|NonRetryableError_Rejects|RetryableError_Retries)'`
+  - `go test ./internal/service -run 'Test(SyncProviderCatalog|ImportProviderCatalog|CreateForOrder)'`
+  - `go test ./internal/upstream`
+
+Remaining implementation:
+
+- Poll FansGurus order status and map delivered/partial/canceled states.
+- Query TGX trades when the trade response does not include immediate secrets.
+- Harden retry/idempotency behavior around provider timeouts.
+- Expose provider fulfillment status and retry tools in admin.
 
 ## Phase 6: Frontend And Admin
 
