@@ -167,15 +167,20 @@ Completed verification:
 - TGX submit uses mapped `shared_code|race`, order quantity, order number as
   `request_no`, and manual form widget fields.
 - TGX immediate secrets are stored as upstream fulfillment payloads.
+- Added provider status polling for accepted procurement orders:
+  - FansGurus `status`
+  - TGX `query`
+- Provider polling maps delivered/canceled/refunded states into the existing
+  local procurement callback flow.
+- TGX pending query results keep procurement orders in `accepted`.
 - Targeted tests passed:
   - `go test ./internal/service -run 'TestSubmitToUpstream_(FansGurusProvider|TGXProviderImmediateSecret|Success|NonRetryableError_Rejects|RetryableError_Retries)'`
+  - `go test ./internal/service -run 'TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
   - `go test ./internal/service -run 'Test(SyncProviderCatalog|ImportProviderCatalog|CreateForOrder)'`
   - `go test ./internal/upstream`
 
 Remaining implementation:
 
-- Poll FansGurus order status and map delivered/partial/canceled states.
-- Query TGX trades when the trade response does not include immediate secrets.
 - Harden retry/idempotency behavior around provider timeouts.
 - Expose provider fulfillment status and retry tools in admin.
 
