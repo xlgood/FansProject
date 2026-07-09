@@ -254,6 +254,9 @@ Remaining implementation:
 
 ## Phase 6: Frontend And Admin
 
+Status: frontend/admin smoke verification completed on 2026-07-09. Details are
+recorded in `docs/14-frontend-admin-smoke.md`.
+
 Goal: make the integrated catalog usable.
 
 Tasks:
@@ -268,6 +271,22 @@ Success criteria:
 
 - Customers cannot buy hidden or unsupported SKUs.
 - Admin can diagnose sync and fulfillment failures.
+
+Completed verification:
+
+- User frontend typecheck passed:
+  - `cd user && ./node_modules/.bin/vue-tsc -b`
+- User frontend production build passed:
+  - `cd user && ./node_modules/.bin/vite build`
+- Admin frontend typecheck passed:
+  - `cd admin && ./node_modules/.bin/vue-tsc -b`
+- Admin frontend production build passed:
+  - `cd admin && ./node_modules/.bin/vite build`
+
+Remaining implementation:
+
+- Run a browser smoke pass with backend/admin/user dev servers when local
+  runtime data is ready.
 
 ## Phase 7: Language, SEO, And Branding
 
