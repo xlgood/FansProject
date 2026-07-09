@@ -213,6 +213,14 @@ Completed verification:
   - the worker task calls `SyncAcceptedOrders()` without admin interaction;
   - service coverage verifies accepted FansGurus procurement orders advance to
     fulfilled and the local order advances to delivered.
+- Added local mock end-to-end provider fulfillment coverage:
+  - a paid local order creates a pending procurement order through
+    `CreateForOrder()`;
+  - mocked FansGurus `add` accepts the order and moves the local order to
+    fulfilling;
+  - mocked FansGurus `status` completes the procurement order through
+    `SyncAcceptedOrders()`;
+  - the local order reaches delivered without calling any real upstream API.
 - Targeted tests passed:
   - `go test ./internal/service -run 'TestSubmitToUpstream_(FansGurusProvider|TGXProviderImmediateSecret|Success|NonRetryableError_Rejects|RetryableError_Retries)'`
   - `go test ./internal/service -run 'TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
@@ -224,6 +232,8 @@ Completed verification:
   - `go test ./internal/service -run 'TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
   - `go test ./internal/service -run 'TestCancelManual_(ProviderAcceptedUnsupported|FailedLocalOnlyCancels)'`
   - `go test ./internal/service -run 'TestSyncAcceptedOrders_FansGurusCompleted|TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
+  - `go test ./internal/service -run 'TestProviderFulfillmentEndToEnd_FansGurusMock|TestSyncAcceptedOrders_FansGurusCompleted|TestSubmitToUpstream_FansGurusProvider|TestPollUpstreamStatus_FansGurusCompleted'`
+  - `go test ./internal/service -run 'Test(ProviderFulfillmentEndToEnd|CreateForOrder|SubmitToUpstream|PollUpstreamStatus|SyncAcceptedOrders|CancelManual)'`
   - `go test ./internal/worker`
   - `cd user && ./node_modules/.bin/vue-tsc -b`
   - `cd user && ./node_modules/.bin/vite build`
@@ -232,7 +242,7 @@ Completed verification:
 
 Remaining implementation:
 
-- Run an end-to-end local mock purchase flow.
+- Add TGX mock end-to-end coverage for delivered account secrets.
 
 ## Phase 6: Frontend And Admin
 

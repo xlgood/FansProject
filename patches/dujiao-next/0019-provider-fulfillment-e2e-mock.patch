@@ -1,0 +1,114 @@
+diff --git a/internal/service/procurement_order_service_test.go b/internal/service/procurement_order_service_test.go
+index 451f522..85ef632 100644
+--- a/internal/service/procurement_order_service_test.go
++++ b/internal/service/procurement_order_service_test.go
+@@ -1241,6 +1241,109 @@ func TestHandleSubmitFailure_MaxRetriesExhausted(t *testing.T) {
+ 	}
+ }
+ 
++func TestProviderFulfillmentEndToEnd_FansGurusMock(t *testing.T) {
++	db := setupProcurementTestDB(t)
++
++	order := createProcTestOrder(t, db, "PROC-E2E-FG-001", constants.OrderStatusPaid, constants.FulfillmentTypeUpstream)
++	setProcTestManualSubmission(t, db, order.ID, models.JSON{"link": "https://example.com/post"})
++
++	var addCalls int
++	var statusCalls int
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if err := r.ParseForm(); err != nil {
++			t.Fatalf("ParseForm: %v", err)
++		}
++		w.Header().Set("Content-Type", "application/json")
++		switch r.FormValue("action") {
++		case "add":
++			addCalls++
++			if got := r.FormValue("service"); got != "12345" {
++				t.Fatalf("service=%s, want 12345", got)
++			}
++			if got := r.FormValue("link"); got != "https://example.com/post" {
++				t.Fatalf("link=%s, want https://example.com/post", got)
++			}
++			if got := r.FormValue("quantity"); got != "1" {
++				t.Fatalf("quantity=%s, want 1", got)
++			}
++			_ = json.NewEncoder(w).Encode(map[string]any{"order": 9988, "charge": "0.50"})
++		case "status":
++			statusCalls++
++			if got := r.FormValue("order"); got != "9988" {
++				t.Fatalf("order=%s, want 9988", got)
++			}
++			_ = json.NewEncoder(w).Encode(map[string]string{"status": "Completed", "charge": "0.50", "currency": "USD"})
++		default:
++			t.Fatalf("unexpected action %q", r.FormValue("action"))
++		}
++	}))
++	defer server.Close()
++
++	connSvc := NewSiteConnectionService(repository.NewSiteConnectionRepository(db), "test-key", t.TempDir())
++	conn, err := connSvc.Create(CreateConnectionInput{
++		Name: "fansgurus", BaseURL: server.URL,
++		ApiKey: "fans-key", ApiSecret: "unused", Protocol: constants.ConnectionProtocolFansGurus,
++	})
++	if err != nil {
++		t.Fatalf("create connection: %v", err)
++	}
++	pm := &models.ProductMapping{
++		ConnectionID:        conn.ID,
++		LocalProductID:      1,
++		UpstreamProductCode: "12345",
++		Provider:            upstream.CatalogProviderFansGurus,
++		IsActive:            true,
++	}
++	if err := db.Create(pm).Error; err != nil {
++		t.Fatalf("create product mapping: %v", err)
++	}
++	if err := db.Create(&models.SKUMapping{ProductMappingID: pm.ID, LocalSKUID: 1, UpstreamSKUCode: "12345", UpstreamIsActive: true}).Error; err != nil {
++		t.Fatalf("create sku mapping: %v", err)
++	}
++	svc := newTestProcurementService(db, connSvc)
++
++	if err := svc.CreateForOrder(order.ID); err != nil {
++		t.Fatalf("CreateForOrder: %v", err)
++	}
++	proc, err := repository.NewProcurementOrderRepository(db).GetByLocalOrderID(order.ID)
++	if err != nil {
++		t.Fatalf("load procurement: %v", err)
++	}
++	if proc == nil || proc.Status != constants.ProcurementStatusPending {
++		t.Fatalf("procurement after create=%+v, want pending", proc)
++	}
++
++	if err := svc.SubmitToUpstream(proc.ID); err != nil {
++		t.Fatalf("SubmitToUpstream: %v", err)
++	}
++	var submitted models.ProcurementOrder
++	db.First(&submitted, proc.ID)
++	if submitted.Status != constants.ProcurementStatusAccepted || submitted.UpstreamOrderNo != "9988" {
++		t.Fatalf("procurement after submit=%+v, want accepted upstream 9988", submitted)
++	}
++	var fulfillingOrder models.Order
++	db.First(&fulfillingOrder, order.ID)
++	if fulfillingOrder.Status != constants.OrderStatusFulfilling {
++		t.Fatalf("order after submit status=%s, want %s", fulfillingOrder.Status, constants.OrderStatusFulfilling)
++	}
++
++	svc.SyncAcceptedOrders()
++
++	var fulfilledProc models.ProcurementOrder
++	db.First(&fulfilledProc, proc.ID)
++	if fulfilledProc.Status != constants.ProcurementStatusFulfilled {
++		t.Fatalf("procurement after sync status=%s, want %s", fulfilledProc.Status, constants.ProcurementStatusFulfilled)
++	}
++	var deliveredOrder models.Order
++	db.First(&deliveredOrder, order.ID)
++	if deliveredOrder.Status != constants.OrderStatusDelivered {
++		t.Fatalf("order after sync status=%s, want %s", deliveredOrder.Status, constants.OrderStatusDelivered)
++	}
++	if addCalls != 1 || statusCalls != 1 {
++		t.Fatalf("addCalls=%d statusCalls=%d, want 1/1", addCalls, statusCalls)
++	}
++}
++
+ func TestCancelManual_ProviderAcceptedUnsupported(t *testing.T) {
+ 	db := setupProcurementTestDB(t)
+ 
