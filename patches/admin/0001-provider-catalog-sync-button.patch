@@ -1,0 +1,199 @@
+diff --git a/src/api/admin.ts b/src/api/admin.ts
+index 70c86fa..3827163 100644
+--- a/src/api/admin.ts
++++ b/src/api/admin.ts
+@@ -547,6 +547,8 @@ export const adminAPI = {
+   pingSiteConnection: (id: number) => api.post(`/admin/site-connections/${id}/ping`),
+   updateSiteConnectionStatus: (id: number, data: { is_active?: boolean; status?: string }) => api.put(`/admin/site-connections/${id}/status`, data),
+   reapplyConnectionMarkup: (id: number) => api.post(`/admin/site-connections/${id}/reapply-markup`),
++  syncProviderCatalog: (data: { fansgurus_connection_id: number; tgx_connection_id: number }) =>
++    api.post('/admin/provider-catalog/sync', data),
+   // Product Mappings
+   getProductMappings: (params?: Record<string, unknown>) => api.get('/admin/product-mappings', { params }),
+   getProductMapping: (id: number) => api.get(`/admin/product-mappings/${id}`),
+diff --git a/src/api/types.ts b/src/api/types.ts
+index 6e54c5f..1a6e52c 100644
+--- a/src/api/types.ts
++++ b/src/api/types.ts
+@@ -548,6 +548,18 @@ export interface AdminSiteConnection {
+   updated_at: string
+ }
+ 
++export interface ProviderCatalogSyncResult {
++  fansgurus_pulled: number
++  tgx_pulled: number
++  supported_platforms?: string[]
++  filtered_telegram: number
++  filtered_inactive: number
++  filtered_platform: number
++  imported: number
++  skipped: number
++  deactivated: number
++}
++
+ // --- ProductMapping ---
+ export type UpstreamProductStatus = 'active' | 'inactive' | 'deleted'
+ 
+diff --git a/src/i18n/index.ts b/src/i18n/index.ts
+index 7549313..79682ac 100644
+--- a/src/i18n/index.ts
++++ b/src/i18n/index.ts
+@@ -299,6 +299,13 @@ const messages = {
+         disable: '禁用',
+         reapplyMarkup: '重新应用加价',
+       },
++      providerCatalog: {
++        action: '同步 Provider 目录',
++        syncing: '同步中...',
++        missingConnections: '请先创建 fansgurus 和 tgx-account 两个连接',
++        confirm: '确认使用「{fans}」和「{tgx}」同步 Provider 商品目录？',
++        success: '同步完成：导入 {imported} 个，过滤 {filtered} 个，停用 {deactivated} 个',
++      },
+       ping: {
+         success: 'Ping 成功',
+         failed: 'Ping 失败',
+@@ -4557,6 +4564,13 @@ const messages = {
+         disable: '停用',
+         reapplyMarkup: '重新套用加價',
+       },
++      providerCatalog: {
++        action: '同步 Provider 目錄',
++        syncing: '同步中...',
++        missingConnections: '請先建立 fansgurus 和 tgx-account 兩個連接',
++        confirm: '確認使用「{fans}」和「{tgx}」同步 Provider 商品目錄？',
++        success: '同步完成：導入 {imported} 個，過濾 {filtered} 個，停用 {deactivated} 個',
++      },
+       ping: {
+         success: 'Ping 成功',
+         failed: 'Ping 失敗',
+@@ -8815,6 +8829,13 @@ const messages = {
+         disable: 'Disable',
+         reapplyMarkup: 'Reapply Markup',
+       },
++      providerCatalog: {
++        action: 'Sync Provider Catalog',
++        syncing: 'Syncing...',
++        missingConnections: 'Create both fansgurus and tgx-account connections first',
++        confirm: 'Sync provider catalog with "{fans}" and "{tgx}"?',
++        success: 'Sync complete: imported {imported}, filtered {filtered}, deactivated {deactivated}',
++      },
+       ping: {
+         success: 'Ping succeeded',
+         failed: 'Ping failed',
+diff --git a/src/views/admin/SiteConnections.vue b/src/views/admin/SiteConnections.vue
+index 150d297..58180d3 100644
+--- a/src/views/admin/SiteConnections.vue
++++ b/src/views/admin/SiteConnections.vue
+@@ -1,8 +1,9 @@
+ <script setup lang="ts">
+-import { onMounted, reactive, ref } from 'vue'
++import { computed, onMounted, reactive, ref } from 'vue'
+ import { useI18n } from 'vue-i18n'
+ import { adminAPI } from '@/api/admin'
+-import type { AdminSiteConnection } from '@/api/types'
++import { useAdminAuthStore } from '@/stores/auth'
++import type { AdminSiteConnection, ProviderCatalogSyncResult } from '@/api/types'
+ import IdCell from '@/components/IdCell.vue'
+ import { Button } from '@/components/ui/button'
+ import { Input } from '@/components/ui/input'
+@@ -16,6 +17,7 @@ import { notifyError, notifySuccess } from '@/utils/notify'
+ import { useFormValidation, rules } from '@/composables/useFormValidation'
+ 
+ const { t } = useI18n()
++const authStore = useAdminAuthStore()
+ const loading = ref(true)
+ const connections = ref<AdminSiteConnection[]>([])
+ const pagination = reactive({
+@@ -28,6 +30,7 @@ const showModal = ref(false)
+ const isEditing = ref(false)
+ const editingId = ref<number | null>(null)
+ const pingingId = ref<number | null>(null)
++const syncingProviderCatalog = ref(false)
+ 
+ const form = reactive({
+   name: '',
+@@ -44,6 +47,7 @@ const form = reactive({
+   auto_sync_price: 'false',
+ })
+ const reapplyingId = ref<number | null>(null)
++const canSyncProviderCatalog = computed(() => authStore.hasPermission('POST:/admin/provider-catalog/sync'))
+ 
+ const siteConnectionSchema = {
+   name: [rules.required()],
+@@ -244,6 +248,47 @@ const handleReapplyMarkup = async (conn: AdminSiteConnection) => {
+   }
+ }
+ 
++const findConnectionByProtocol = (protocol: string) => {
++  return connections.value.find((conn) => conn.protocol === protocol)
++}
++
++const handleSyncProviderCatalog = async () => {
++  const fansConn = findConnectionByProtocol('fansgurus')
++  const tgxConn = findConnectionByProtocol('tgx-account')
++  if (!fansConn || !tgxConn) {
++    notifyError(t('siteConnections.providerCatalog.missingConnections'))
++    return
++  }
++
++  const confirmed = await confirmAction({
++    description: t('siteConnections.providerCatalog.confirm', {
++      fans: fansConn.name || `#${fansConn.id}`,
++      tgx: tgxConn.name || `#${tgxConn.id}`,
++    }),
++    confirmText: t('siteConnections.providerCatalog.action'),
++  })
++  if (!confirmed) return
++
++  syncingProviderCatalog.value = true
++  try {
++    const res = await adminAPI.syncProviderCatalog({
++      fansgurus_connection_id: fansConn.id,
++      tgx_connection_id: tgxConn.id,
++    })
++    const result = res.data.data as ProviderCatalogSyncResult | undefined
++    notifySuccess(t('siteConnections.providerCatalog.success', {
++      imported: result?.imported ?? 0,
++      filtered: (result?.filtered_telegram ?? 0) + (result?.filtered_inactive ?? 0) + (result?.filtered_platform ?? 0),
++      deactivated: result?.deactivated ?? 0,
++    }))
++    fetchConnections(pagination.page)
++  } catch (err: any) {
++    notifyError(err?.response?.data?.message || err?.message)
++  } finally {
++    syncingProviderCatalog.value = false
++  }
++}
++
+ const statusBadgeClass = (status?: string) => {
+   switch (status) {
+     case 'active':
+@@ -277,7 +322,18 @@ onMounted(() => {
+   <div class="space-y-6">
+     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+       <h1 class="text-2xl font-semibold">{{ t('siteConnections.title') }}</h1>
+-      <Button class="w-full sm:w-auto" @click="openCreateModal">{{ t('siteConnections.createButton') }}</Button>
++      <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
++        <Button
++          v-if="canSyncProviderCatalog"
++          variant="outline"
++          class="w-full sm:w-auto"
++          :disabled="loading || syncingProviderCatalog"
++          @click="handleSyncProviderCatalog"
++        >
++          {{ syncingProviderCatalog ? t('siteConnections.providerCatalog.syncing') : t('siteConnections.providerCatalog.action') }}
++        </Button>
++        <Button class="w-full sm:w-auto" @click="openCreateModal">{{ t('siteConnections.createButton') }}</Button>
++      </div>
+     </div>
+ 
+     <div class="rounded-xl border border-border bg-card overflow-x-auto">
+@@ -401,6 +457,8 @@ onMounted(() => {
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="dujiao-next">dujiao-next</SelectItem>
++                  <SelectItem value="fansgurus">fansgurus</SelectItem>
++                  <SelectItem value="tgx-account">tgx-account</SelectItem>
+                 </SelectContent>
+               </Select>
+             </div>

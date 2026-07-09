@@ -117,6 +117,9 @@ Completed verification:
 - Added an admin manual trigger endpoint for provider catalog sync:
   `POST /admin/provider-catalog/sync`.
 - Added RBAC coverage for the manual trigger under the `integration` role.
+- Added an admin frontend manual sync button on the connection management page,
+  including provider protocol selection options for `fansgurus` and
+  `tgx-account`.
 - Tests cover platform aliases, Telegram English and Chinese tokens, `tg`
   boundary matching, inactive upstream items, non-intersection filtering, and
   FansGurus/TGX price rules.
@@ -126,11 +129,11 @@ Completed verification:
   - `go test ./internal/http/handlers/admin -run 'TestSyncProviderCatalog'`
   - `go test ./internal/router`
   - `go test ./internal/repository -run 'TestSQLDialect|TestProduct'`
+  - `cd admin && ./node_modules/.bin/vue-tsc -b`
+  - `cd admin && ./node_modules/.bin/vite build`
 
 Remaining implementation:
 
-- Add an admin UI button/form for manual sync, if the existing admin frontend
-  needs an explicit control instead of direct API use.
 - Add worker/queue or scheduled sync if automatic refresh is required.
 
 ## Phase 5: Order Fulfillment
