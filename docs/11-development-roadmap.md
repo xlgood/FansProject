@@ -74,7 +74,7 @@ Verification:
 
 ## Phase 4: SKU Sync And Filtering
 
-Status: catalog policy, base database import, and TGX race/widget handling completed on 2026-07-08; live API sync remains pending.
+Status: catalog policy, base database import, TGX race/widget handling, and live sync orchestration completed on 2026-07-09; raw payload history and stale deactivation remain pending.
 
 Goal: build the catalog pipeline.
 
@@ -107,19 +107,22 @@ Completed verification:
   numeric IDs.
 - Added TGX `config` race parsing into multiple SKU variants.
 - Added TGX `widget` conversion into Dujiao manual form schema.
+- Added provider catalog sync orchestration that pulls FansGurus/TGX catalog
+  clients, builds the filtered intersection catalog, and imports by provider
+  connection ID.
 - Tests cover platform aliases, Telegram English and Chinese tokens, `tg`
   boundary matching, inactive upstream items, non-intersection filtering, and
   FansGurus/TGX price rules.
 - Targeted tests passed:
   - `go test ./internal/upstream`
-  - `go test ./internal/service -run 'TestImportProviderCatalog'`
+  - `go test ./internal/service -run 'Test(SyncProviderCatalog|ImportProviderCatalog)'`
   - `go test ./internal/repository -run 'TestSQLDialect|TestProduct'`
 
 Remaining implementation:
 
 - Persist raw upstream catalog payloads.
-- Pull live FansGurus/TGX catalogs and run the import from a sync job.
 - Deactivate previously imported items that disappear or leave the intersection.
+- Wire sync orchestration to admin/worker entry points.
 
 ## Phase 5: Order Fulfillment
 
