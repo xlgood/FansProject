@@ -1,0 +1,775 @@
+diff --git a/internal/models/db.go b/internal/models/db.go
+index d69306a..e323f2d 100644
+--- a/internal/models/db.go
++++ b/internal/models/db.go
+@@ -153,6 +153,7 @@ func AutoMigrate() error {
+ 		&SiteConnection{},
+ 		&ProductMapping{},
+ 		&SKUMapping{},
++		&ProviderCatalogSyncRun{},
+ 		&ProcurementOrder{},
+ 		&DownstreamOrderRef{},
+ 		&ReconciliationJob{},
+diff --git a/internal/models/provider_catalog_sync.go b/internal/models/provider_catalog_sync.go
+new file mode 100644
+index 0000000..2462e0f
+--- /dev/null
++++ b/internal/models/provider_catalog_sync.go
+@@ -0,0 +1,27 @@
++package models
++
++import "time"
++
++type ProviderCatalogSyncRun struct {
++	ID               uint      `gorm:"primarykey" json:"id"`
++	Status           string    `gorm:"type:varchar(20);not null;default:'success';index" json:"status"`
++	FansGurusPulled  int       `gorm:"not null;default:0" json:"fansgurus_pulled"`
++	TGXPulled        int       `gorm:"not null;default:0" json:"tgx_pulled"`
++	Imported         int       `gorm:"not null;default:0" json:"imported"`
++	Skipped          int       `gorm:"not null;default:0" json:"skipped"`
++	Deactivated      int       `gorm:"not null;default:0" json:"deactivated"`
++	FilteredTelegram int       `gorm:"not null;default:0" json:"filtered_telegram"`
++	FilteredInactive int       `gorm:"not null;default:0" json:"filtered_inactive"`
++	FilteredPlatform int       `gorm:"not null;default:0" json:"filtered_platform"`
++	SupportedJSON    JSON      `gorm:"type:json" json:"supported"`
++	RawFansGurusJSON JSON      `gorm:"type:json" json:"raw_fansgurus"`
++	RawTGXJSON       JSON      `gorm:"type:json" json:"raw_tgx"`
++	ErrorMessage     string    `gorm:"type:text" json:"error_message,omitempty"`
++	StartedAt        time.Time `gorm:"index" json:"started_at"`
++	FinishedAt       time.Time `json:"finished_at"`
++	CreatedAt        time.Time `gorm:"index" json:"created_at"`
++}
++
++func (ProviderCatalogSyncRun) TableName() string {
++	return "provider_catalog_sync_runs"
++}
+diff --git a/internal/repository/product_mapping_repository.go b/internal/repository/product_mapping_repository.go
+index 2790c72..85cd070 100644
+--- a/internal/repository/product_mapping_repository.go
++++ b/internal/repository/product_mapping_repository.go
+@@ -13,6 +13,7 @@ type ProductMappingRepository interface {
+ 	GetByID(id uint) (*models.ProductMapping, error)
+ 	GetByLocalProductID(productID uint) (*models.ProductMapping, error)
+ 	GetByConnectionAndUpstreamID(connectionID, upstreamProductID uint) (*models.ProductMapping, error)
++	GetByConnectionAndUpstreamCode(connectionID uint, upstreamProductCode string) (*models.ProductMapping, error)
+ 	WithTx(tx *gorm.DB) ProductMappingRepository
+ 	Create(mapping *models.ProductMapping) error
+ 	Update(mapping *models.ProductMapping) error
+@@ -23,6 +24,8 @@ type ProductMappingRepository interface {
+ 	ListAllActive() ([]models.ProductMapping, error)
+ 	ListByLocalProductIDs(productIDs []uint) ([]models.ProductMapping, error)
+ 	ListUpstreamIDsByConnection(connectionID uint) ([]uint, error)
++	ListActiveByProvider(connectionID uint, provider string) ([]models.ProductMapping, error)
++	DeactivateMissingProviderCodes(connectionID uint, provider string, activeCodes []string) (int64, error)
+ }
+ 
+ // ProductMappingListFilter 映射列表筛选
+@@ -81,6 +84,17 @@ func (r *GormProductMappingRepository) GetByConnectionAndUpstreamID(connectionID
+ 	return &m, nil
+ }
+ 
++func (r *GormProductMappingRepository) GetByConnectionAndUpstreamCode(connectionID uint, upstreamProductCode string) (*models.ProductMapping, error) {
++	var m models.ProductMapping
++	if err := r.db.Where("connection_id = ? AND upstream_product_code = ?", connectionID, upstreamProductCode).First(&m).Error; err != nil {
++		if errors.Is(err, gorm.ErrRecordNotFound) {
++			return nil, nil
++		}
++		return nil, err
++	}
++	return &m, nil
++}
++
+ func (r *GormProductMappingRepository) Create(mapping *models.ProductMapping) error {
+ 	return r.db.Create(mapping).Error
+ }
+@@ -181,3 +195,24 @@ func (r *GormProductMappingRepository) ListUpstreamIDsByConnection(connectionID
+ 	}
+ 	return ids, nil
+ }
++
++func (r *GormProductMappingRepository) ListActiveByProvider(connectionID uint, provider string) ([]models.ProductMapping, error) {
++	var mappings []models.ProductMapping
++	if err := r.db.Where("connection_id = ? AND provider = ? AND is_active = ?", connectionID, provider, true).Find(&mappings).Error; err != nil {
++		return nil, err
++	}
++	return mappings, nil
++}
++
++func (r *GormProductMappingRepository) DeactivateMissingProviderCodes(connectionID uint, provider string, activeCodes []string) (int64, error) {
++	query := r.db.Model(&models.ProductMapping{}).
++		Where("connection_id = ? AND provider = ? AND is_active = ?", connectionID, provider, true)
++	if len(activeCodes) > 0 {
++		query = query.Where("upstream_product_code NOT IN ?", activeCodes)
++	}
++	result := query.Updates(map[string]interface{}{
++		"is_active":       false,
++		"upstream_status": models.UpstreamStatusInactive,
++	})
++	return result.RowsAffected, result.Error
++}
+diff --git a/internal/repository/provider_catalog_sync_repository.go b/internal/repository/provider_catalog_sync_repository.go
+new file mode 100644
+index 0000000..4681311
+--- /dev/null
++++ b/internal/repository/provider_catalog_sync_repository.go
+@@ -0,0 +1,23 @@
++package repository
++
++import (
++	"github.com/dujiao-next/internal/models"
++
++	"gorm.io/gorm"
++)
++
++type ProviderCatalogSyncRunRepository interface {
++	Create(run *models.ProviderCatalogSyncRun) error
++}
++
++type GormProviderCatalogSyncRunRepository struct {
++	db *gorm.DB
++}
++
++func NewProviderCatalogSyncRunRepository(db *gorm.DB) *GormProviderCatalogSyncRunRepository {
++	return &GormProviderCatalogSyncRunRepository{db: db}
++}
++
++func (r *GormProviderCatalogSyncRunRepository) Create(run *models.ProviderCatalogSyncRun) error {
++	return r.db.Create(run).Error
++}
+diff --git a/internal/service/product_mapping_service.go b/internal/service/product_mapping_service.go
+index 0bbbacb..72e145c 100644
+--- a/internal/service/product_mapping_service.go
++++ b/internal/service/product_mapping_service.go
+@@ -34,6 +34,7 @@ type ProductMappingService struct {
+ 	categoryService *CategoryService
+ 	mediaService    *MediaService
+ 	settingService  *SettingService
++	syncRunRepo     repository.ProviderCatalogSyncRunRepository
+ }
+ 
+ // NewProductMappingService 创建商品映射服务
+@@ -70,6 +71,10 @@ func (s *ProductMappingService) SetSettingService(ss *SettingService) {
+ 	s.settingService = ss
+ }
+ 
++func (s *ProductMappingService) SetProviderCatalogSyncRunRepository(repo repository.ProviderCatalogSyncRunRepository) {
++	s.syncRunRepo = repo
++}
++
+ // GetByID 获取映射详情
+ func (s *ProductMappingService) GetByID(id uint) (*models.ProductMapping, error) {
+ 	return s.mappingRepo.GetByID(id)
+diff --git a/internal/service/provider_catalog_import_test.go b/internal/service/provider_catalog_import_test.go
+new file mode 100644
+index 0000000..d2a69e0
+--- /dev/null
++++ b/internal/service/provider_catalog_import_test.go
+@@ -0,0 +1,256 @@
++package service
++
++import (
++	"testing"
++
++	"github.com/dujiao-next/internal/constants"
++	"github.com/dujiao-next/internal/models"
++	"github.com/dujiao-next/internal/repository"
++	"github.com/dujiao-next/internal/upstream"
++
++	"github.com/glebarez/sqlite"
++	"gorm.io/gorm"
++)
++
++func TestImportProviderCatalogCreatesProductsAndMappings(t *testing.T) {
++	db := setupProviderCatalogImportDB(t)
++	svc := NewProductMappingService(
++		repository.NewProductMappingRepository(db),
++		repository.NewSKUMappingRepository(db),
++		repository.NewProductRepository(db),
++		repository.NewProductSKURepository(db),
++		repository.NewCategoryRepository(db),
++		nil,
++	)
++
++	catalog := upstream.BuildFilteredCatalog(
++		[]upstream.ProviderCatalogItem{
++			{
++				Provider:      upstream.CatalogProviderFansGurus,
++				Code:          "16252",
++				Name:          "Instagram Followers",
++				Category:      "Instagram",
++				UpstreamPrice: "2.00",
++				TargetPrice:   "10.00000000",
++				MinQuantity:   500,
++				MaxQuantity:   10000,
++				Active:        true,
++			},
++			{
++				Provider:      upstream.CatalogProviderFansGurus,
++				Code:          "tg-1",
++				Name:          "Telegram Members",
++				Category:      "Telegram",
++				UpstreamPrice: "1.00",
++				TargetPrice:   "5.00000000",
++				Active:        true,
++			},
++		},
++		[]upstream.ProviderCatalogItem{
++			{
++				Provider:      upstream.CatalogProviderTGX,
++				Code:          "IG-001",
++				Name:          "IG Account",
++				Description:   "Instagram aged account",
++				UpstreamPrice: "100.00",
++				TargetPrice:   "120.00000000",
++				MinQuantity:   1,
++				Active:        true,
++			},
++			{
++				Provider:      upstream.CatalogProviderTGX,
++				Code:          "FB-001",
++				Name:          "Facebook Account",
++				Description:   "Facebook account",
++				UpstreamPrice: "80.00",
++				TargetPrice:   "96.00000000",
++				Active:        true,
++			},
++		},
++	)
++
++	result, err := svc.ImportProviderCatalog(10, catalog)
++	if err != nil {
++		t.Fatalf("ImportProviderCatalog: %v", err)
++	}
++	if result.Imported != 2 || result.Skipped != 0 {
++		t.Fatalf("result=%+v, want imported=2 skipped=0", result)
++	}
++
++	var categories []models.Category
++	if err := db.Find(&categories).Error; err != nil {
++		t.Fatalf("load categories: %v", err)
++	}
++	if len(categories) != 1 || categories[0].Slug != "platform-instagram" {
++		t.Fatalf("categories=%+v, want only platform-instagram", categories)
++	}
++
++	var products []models.Product
++	if err := db.Preload("SKUs").Order("slug ASC").Find(&products).Error; err != nil {
++		t.Fatalf("load products: %v", err)
++	}
++	if len(products) != 2 {
++		t.Fatalf("product count=%d, want 2", len(products))
++	}
++	for _, product := range products {
++		if product.FulfillmentType != constants.FulfillmentTypeUpstream || !product.IsMapped || product.IsActive {
++			t.Fatalf("unexpected product flags: %+v", product)
++		}
++		if len(product.SKUs) != 1 {
++			t.Fatalf("product %s sku count=%d, want 1", product.Slug, len(product.SKUs))
++		}
++	}
++
++	var fansMapping models.ProductMapping
++	if err := db.Where("upstream_product_code = ?", "16252").First(&fansMapping).Error; err != nil {
++		t.Fatalf("load fans mapping: %v", err)
++	}
++	if fansMapping.Provider != upstream.CatalogProviderFansGurus || fansMapping.Platform != "instagram" {
++		t.Fatalf("unexpected fans mapping: %+v", fansMapping)
++	}
++
++	var tgxMapping models.ProductMapping
++	if err := db.Where("upstream_product_code = ?", "IG-001").First(&tgxMapping).Error; err != nil {
++		t.Fatalf("load tgx mapping: %v", err)
++	}
++	if tgxMapping.Provider != upstream.CatalogProviderTGX || tgxMapping.Platform != "instagram" {
++		t.Fatalf("unexpected tgx mapping: %+v", tgxMapping)
++	}
++
++	var skuMappings []models.SKUMapping
++	if err := db.Order("upstream_sku_code ASC").Find(&skuMappings).Error; err != nil {
++		t.Fatalf("load sku mappings: %v", err)
++	}
++	if len(skuMappings) != 2 {
++		t.Fatalf("sku mapping count=%d, want 2", len(skuMappings))
++	}
++	if skuMappings[0].UpstreamSKUCode == "" || skuMappings[1].UpstreamSKUCode == "" {
++		t.Fatalf("sku mappings should keep upstream sku codes: %+v", skuMappings)
++	}
++}
++
++func TestImportProviderCatalogSkipsExistingMapping(t *testing.T) {
++	db := setupProviderCatalogImportDB(t)
++	svc := NewProductMappingService(
++		repository.NewProductMappingRepository(db),
++		repository.NewSKUMappingRepository(db),
++		repository.NewProductRepository(db),
++		repository.NewProductSKURepository(db),
++		repository.NewCategoryRepository(db),
++		nil,
++	)
++
++	catalog := upstream.BuildFilteredCatalog(
++		[]upstream.ProviderCatalogItem{
++			{
++				Provider:      upstream.CatalogProviderFansGurus,
++				Code:          "16252",
++				Name:          "Instagram Followers",
++				Category:      "Instagram",
++				UpstreamPrice: "2.00",
++				TargetPrice:   "10.00000000",
++				Active:        true,
++			},
++		},
++		[]upstream.ProviderCatalogItem{
++			{
++				Provider:      upstream.CatalogProviderTGX,
++				Code:          "IG-001",
++				Name:          "IG Account",
++				Description:   "Instagram aged account",
++				UpstreamPrice: "100.00",
++				TargetPrice:   "120.00000000",
++				Active:        true,
++			},
++		},
++	)
++
++	first, err := svc.ImportProviderCatalog(10, catalog)
++	if err != nil {
++		t.Fatalf("first import: %v", err)
++	}
++	second, err := svc.ImportProviderCatalog(10, catalog)
++	if err != nil {
++		t.Fatalf("second import: %v", err)
++	}
++	if first.Imported != 2 || second.Imported != 0 || second.Skipped != 2 {
++		t.Fatalf("unexpected results: first=%+v second=%+v", first, second)
++	}
++}
++
++func TestImportProviderCatalogCreatesTGXRaceSKUsAndWidgetSchema(t *testing.T) {
++	db := setupProviderCatalogImportDB(t)
++	svc := NewProductMappingService(
++		repository.NewProductMappingRepository(db),
++		repository.NewSKUMappingRepository(db),
++		repository.NewProductRepository(db),
++		repository.NewProductSKURepository(db),
++		repository.NewCategoryRepository(db),
++		nil,
++	)
++
++	tgxItem, err := upstream.NewTGXCatalogItem(upstream.TGXCommodity{
++		Code:        "IG-001",
++		Name:        "IG Account",
++		Description: "Instagram aged account",
++		Price:       "100.00",
++		Config:      []byte(`{"category[普通]":"100.00","category[高级]":"150.00"}`),
++		Widget:      []byte(`[{"name":"email","label":"Email","type":"text","required":true}]`),
++		Minimum:     1,
++	})
++	if err != nil {
++		t.Fatalf("NewTGXCatalogItem: %v", err)
++	}
++	catalog := upstream.FilteredCatalog{TGX: []upstream.ProviderCatalogItem{tgxItem}}
++
++	result, err := svc.ImportProviderCatalog(10, catalog)
++	if err != nil {
++		t.Fatalf("ImportProviderCatalog: %v", err)
++	}
++	if result.Imported != 1 {
++		t.Fatalf("result=%+v, want imported=1", result)
++	}
++
++	var product models.Product
++	if err := db.Preload("SKUs").Where("slug = ?", "tgx-instagram-ig-001").First(&product).Error; err != nil {
++		t.Fatalf("load product: %v", err)
++	}
++	if len(product.SKUs) != 2 {
++		t.Fatalf("sku count=%d, want 2", len(product.SKUs))
++	}
++	fields, ok := product.ManualFormSchemaJSON["fields"].([]interface{})
++	if !ok || len(fields) != 1 {
++		t.Fatalf("unexpected manual form schema: %+v", product.ManualFormSchemaJSON)
++	}
++
++	var skuMappings []models.SKUMapping
++	if err := db.Order("upstream_sku_code ASC").Find(&skuMappings).Error; err != nil {
++		t.Fatalf("load sku mappings: %v", err)
++	}
++	if len(skuMappings) != 2 {
++		t.Fatalf("sku mapping count=%d, want 2", len(skuMappings))
++	}
++	gotCodes := []string{skuMappings[0].UpstreamSKUCode, skuMappings[1].UpstreamSKUCode}
++	if gotCodes[0] != "IG-001|普通" || gotCodes[1] != "IG-001|高级" {
++		t.Fatalf("upstream sku codes=%v", gotCodes)
++	}
++}
++
++func setupProviderCatalogImportDB(t *testing.T) *gorm.DB {
++	t.Helper()
++	db, err := gorm.Open(sqlite.Open("file:"+normalizeProviderSlug(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
++	if err != nil {
++		t.Fatalf("open sqlite: %v", err)
++	}
++	if err := db.AutoMigrate(
++		&models.Category{},
++		&models.Product{},
++		&models.ProductSKU{},
++		&models.ProductMapping{},
++		&models.SKUMapping{},
++		&models.ProviderCatalogSyncRun{},
++	); err != nil {
++		t.Fatalf("auto migrate: %v", err)
++	}
++	return db
++}
+diff --git a/internal/service/provider_catalog_sync.go b/internal/service/provider_catalog_sync.go
+new file mode 100644
+index 0000000..599a0f1
+--- /dev/null
++++ b/internal/service/provider_catalog_sync.go
+@@ -0,0 +1,183 @@
++package service
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"time"
++
++	"github.com/dujiao-next/internal/models"
++	"github.com/dujiao-next/internal/upstream"
++)
++
++type FansGurusCatalogClient interface {
++	ListServices(ctx context.Context) ([]upstream.FansGurusService, error)
++}
++
++type TGXCatalogClient interface {
++	ListItems(ctx context.Context) (*upstream.TGXItemsResponse, error)
++}
++
++type ProviderCatalogSyncInput struct {
++	FansGurusConnectionID uint
++	TGXConnectionID       uint
++}
++
++type ProviderCatalogSyncResult struct {
++	FansGurusPulled    int
++	TGXPulled          int
++	SupportedPlatforms []string
++	FilteredTelegram   int
++	FilteredInactive   int
++	FilteredPlatform   int
++	Imported           int
++	Skipped            int
++	Deactivated        int
++}
++
++func (s *ProductMappingService) SyncProviderCatalogWithClients(
++	ctx context.Context,
++	input ProviderCatalogSyncInput,
++	fansClient FansGurusCatalogClient,
++	tgxClient TGXCatalogClient,
++) (*ProviderCatalogSyncResult, error) {
++	if fansClient == nil || tgxClient == nil {
++		return nil, fmt.Errorf("provider catalog clients are required")
++	}
++
++	startedAt := time.Now()
++	fansServices, err := fansClient.ListServices(ctx)
++	if err != nil {
++		s.recordProviderCatalogSyncRun(startedAt, nil, nil, nil, fmt.Errorf("list fansgurus services: %w", err))
++		return nil, fmt.Errorf("list fansgurus services: %w", err)
++	}
++	tgxItems, err := tgxClient.ListItems(ctx)
++	if err != nil {
++		s.recordProviderCatalogSyncRun(startedAt, fansServices, nil, nil, fmt.Errorf("list tgx items: %w", err))
++		return nil, fmt.Errorf("list tgx items: %w", err)
++	}
++	if tgxItems == nil {
++		tgxItems = &upstream.TGXItemsResponse{}
++	}
++
++	fansCatalog := make([]upstream.ProviderCatalogItem, 0, len(fansServices))
++	for _, service := range fansServices {
++		item, err := upstream.NewFansGurusCatalogItem(service)
++		if err != nil {
++			return nil, fmt.Errorf("convert fansgurus service %d: %w", service.Service, err)
++		}
++		fansCatalog = append(fansCatalog, item)
++	}
++
++	tgxCatalog := make([]upstream.ProviderCatalogItem, 0, len(tgxItems.Items))
++	for _, commodity := range tgxItems.Items {
++		item, err := upstream.NewTGXCatalogItem(commodity)
++		if err != nil {
++			return nil, fmt.Errorf("convert tgx item %s: %w", commodity.Code, err)
++		}
++		tgxCatalog = append(tgxCatalog, item)
++	}
++
++	filtered := upstream.BuildFilteredCatalog(fansCatalog, tgxCatalog)
++	importResult, err := s.ImportProviderCatalogByProviderConnections(map[string]uint{
++		upstream.CatalogProviderFansGurus: input.FansGurusConnectionID,
++		upstream.CatalogProviderTGX:       input.TGXConnectionID,
++	}, filtered)
++	if err != nil {
++		s.recordProviderCatalogSyncRun(startedAt, fansServices, tgxItems.Items, nil, err)
++		return nil, err
++	}
++
++	deactivated, err := s.deactivateStaleProviderCatalogMappings(input, filtered)
++	if err != nil {
++		s.recordProviderCatalogSyncRun(startedAt, fansServices, tgxItems.Items, nil, err)
++		return nil, err
++	}
++
++	result := &ProviderCatalogSyncResult{
++		FansGurusPulled:    len(fansServices),
++		TGXPulled:          len(tgxItems.Items),
++		SupportedPlatforms: filtered.SupportedPlatforms,
++		FilteredTelegram:   len(filtered.FilteredTelegram),
++		FilteredInactive:   len(filtered.FilteredInactive),
++		FilteredPlatform:   len(filtered.FilteredPlatform),
++		Imported:           importResult.Imported,
++		Skipped:            importResult.Skipped,
++		Deactivated:        deactivated,
++	}
++	s.recordProviderCatalogSyncRun(startedAt, fansServices, tgxItems.Items, result, nil)
++	return result, nil
++}
++
++func (s *ProductMappingService) deactivateStaleProviderCatalogMappings(input ProviderCatalogSyncInput, catalog upstream.FilteredCatalog) (int, error) {
++	total := int64(0)
++	fansCodes := providerCatalogCodes(catalog.FansGurus)
++	tgxCodes := providerCatalogCodes(catalog.TGX)
++	if input.FansGurusConnectionID > 0 {
++		count, err := s.mappingRepo.DeactivateMissingProviderCodes(input.FansGurusConnectionID, upstream.CatalogProviderFansGurus, fansCodes)
++		if err != nil {
++			return 0, err
++		}
++		total += count
++	}
++	if input.TGXConnectionID > 0 {
++		count, err := s.mappingRepo.DeactivateMissingProviderCodes(input.TGXConnectionID, upstream.CatalogProviderTGX, tgxCodes)
++		if err != nil {
++			return 0, err
++		}
++		total += count
++	}
++	return int(total), nil
++}
++
++func providerCatalogCodes(items []upstream.ProviderCatalogItem) []string {
++	codes := make([]string, 0, len(items))
++	for _, item := range items {
++		codes = append(codes, item.Code)
++	}
++	return codes
++}
++
++func (s *ProductMappingService) recordProviderCatalogSyncRun(startedAt time.Time, fansServices []upstream.FansGurusService, tgxItems []upstream.TGXCommodity, result *ProviderCatalogSyncResult, syncErr error) {
++	if s == nil || s.syncRunRepo == nil {
++		return
++	}
++	status := "success"
++	errMsg := ""
++	if syncErr != nil {
++		status = "failed"
++		errMsg = syncErr.Error()
++	}
++	run := &models.ProviderCatalogSyncRun{
++		Status:           status,
++		FansGurusPulled:  len(fansServices),
++		TGXPulled:        len(tgxItems),
++		RawFansGurusJSON: mustJSONMap("services", fansServices),
++		RawTGXJSON:       mustJSONMap("items", tgxItems),
++		ErrorMessage:     errMsg,
++		StartedAt:        startedAt,
++		FinishedAt:       time.Now(),
++	}
++	if result != nil {
++		run.Imported = result.Imported
++		run.Skipped = result.Skipped
++		run.Deactivated = result.Deactivated
++		run.FilteredTelegram = result.FilteredTelegram
++		run.FilteredInactive = result.FilteredInactive
++		run.FilteredPlatform = result.FilteredPlatform
++		run.SupportedJSON = mustJSONMap("platforms", result.SupportedPlatforms)
++	}
++	_ = s.syncRunRepo.Create(run)
++}
++
++func mustJSONMap(key string, value interface{}) models.JSON {
++	bytes, err := json.Marshal(value)
++	if err != nil {
++		return models.JSON{key: []interface{}{}}
++	}
++	var decoded interface{}
++	if err := json.Unmarshal(bytes, &decoded); err != nil {
++		return models.JSON{key: []interface{}{}}
++	}
++	return models.JSON{key: decoded}
++}
+diff --git a/internal/service/provider_catalog_sync_test.go b/internal/service/provider_catalog_sync_test.go
+new file mode 100644
+index 0000000..c39e27e
+--- /dev/null
++++ b/internal/service/provider_catalog_sync_test.go
+@@ -0,0 +1,157 @@
++package service
++
++import (
++	"context"
++	"testing"
++
++	"github.com/dujiao-next/internal/models"
++	"github.com/dujiao-next/internal/repository"
++	"github.com/dujiao-next/internal/upstream"
++)
++
++type fakeFansGurusCatalogClient struct {
++	services []upstream.FansGurusService
++	err      error
++}
++
++func (c fakeFansGurusCatalogClient) ListServices(ctx context.Context) ([]upstream.FansGurusService, error) {
++	return c.services, c.err
++}
++
++type fakeTGXCatalogClient struct {
++	items []upstream.TGXCommodity
++	err   error
++}
++
++func (c fakeTGXCatalogClient) ListItems(ctx context.Context) (*upstream.TGXItemsResponse, error) {
++	return &upstream.TGXItemsResponse{Items: c.items}, c.err
++}
++
++func TestSyncProviderCatalogWithClientsFiltersAndImports(t *testing.T) {
++	db := setupProviderCatalogImportDB(t)
++	svc := NewProductMappingService(
++		repository.NewProductMappingRepository(db),
++		repository.NewSKUMappingRepository(db),
++		repository.NewProductRepository(db),
++		repository.NewProductSKURepository(db),
++		repository.NewCategoryRepository(db),
++		nil,
++	)
++	svc.SetProviderCatalogSyncRunRepository(repository.NewProviderCatalogSyncRunRepository(db))
++
++	result, err := svc.SyncProviderCatalogWithClients(
++		context.Background(),
++		ProviderCatalogSyncInput{FansGurusConnectionID: 101, TGXConnectionID: 202},
++		fakeFansGurusCatalogClient{services: []upstream.FansGurusService{
++			{Service: 1, Name: "Instagram Followers", Category: "Instagram", Rate: "2.00", Min: 500, Max: 10000},
++			{Service: 2, Name: "YouTube Views", Category: "YouTube", Rate: "1.00", Min: 100, Max: 10000},
++			{Service: 3, Name: "Telegram Members", Category: "Telegram", Rate: "1.00", Min: 100, Max: 10000},
++		}},
++		fakeTGXCatalogClient{items: []upstream.TGXCommodity{
++			{Code: "IG-001", Name: "IG Account", Description: "Instagram aged account", Price: "100.00", Minimum: 1},
++			{Code: "FB-001", Name: "Facebook Account", Description: "Facebook account", Price: "80.00", Minimum: 1},
++		}},
++	)
++	if err != nil {
++		t.Fatalf("SyncProviderCatalogWithClients: %v", err)
++	}
++	if result.FansGurusPulled != 3 || result.TGXPulled != 2 {
++		t.Fatalf("unexpected pull counts: %+v", result)
++	}
++	if len(result.SupportedPlatforms) != 1 || result.SupportedPlatforms[0] != "instagram" {
++		t.Fatalf("supported platforms=%v, want [instagram]", result.SupportedPlatforms)
++	}
++	if result.FilteredTelegram != 1 || result.FilteredPlatform != 2 {
++		t.Fatalf("unexpected filter counts: %+v", result)
++	}
++	if result.Imported != 2 || result.Skipped != 0 {
++		t.Fatalf("unexpected import counts: %+v", result)
++	}
++	if result.Deactivated != 0 {
++		t.Fatalf("deactivated=%d, want 0", result.Deactivated)
++	}
++
++	var mappings []models.ProductMapping
++	if err := db.Order("provider ASC").Find(&mappings).Error; err != nil {
++		t.Fatalf("load mappings: %v", err)
++	}
++	if len(mappings) != 2 {
++		t.Fatalf("mapping count=%d, want 2", len(mappings))
++	}
++	for _, mapping := range mappings {
++		switch mapping.Provider {
++		case upstream.CatalogProviderFansGurus:
++			if mapping.ConnectionID != 101 || mapping.UpstreamProductCode != "1" {
++				t.Fatalf("unexpected fans mapping: %+v", mapping)
++			}
++		case upstream.CatalogProviderTGX:
++			if mapping.ConnectionID != 202 || mapping.UpstreamProductCode != "IG-001" {
++				t.Fatalf("unexpected tgx mapping: %+v", mapping)
++			}
++		default:
++			t.Fatalf("unexpected provider mapping: %+v", mapping)
++		}
++	}
++
++	var run models.ProviderCatalogSyncRun
++	if err := db.First(&run).Error; err != nil {
++		t.Fatalf("load sync run: %v", err)
++	}
++	if run.Status != "success" || run.FansGurusPulled != 3 || run.TGXPulled != 2 || run.Imported != 2 {
++		t.Fatalf("unexpected sync run: %+v", run)
++	}
++	if run.RawFansGurusJSON["services"] == nil || run.RawTGXJSON["items"] == nil {
++		t.Fatalf("raw payloads should be stored: %+v", run)
++	}
++}
++
++func TestSyncProviderCatalogWithClientsDeactivatesStaleMappings(t *testing.T) {
++	db := setupProviderCatalogImportDB(t)
++	mappingRepo := repository.NewProductMappingRepository(db)
++	svc := NewProductMappingService(
++		mappingRepo,
++		repository.NewSKUMappingRepository(db),
++		repository.NewProductRepository(db),
++		repository.NewProductSKURepository(db),
++		repository.NewCategoryRepository(db),
++		nil,
++	)
++
++	activeMapping := models.ProductMapping{
++		ConnectionID:        101,
++		LocalProductID:      999,
++		UpstreamProductCode: "stale",
++		Provider:            upstream.CatalogProviderFansGurus,
++		Platform:            "instagram",
++		UpstreamStatus:      models.UpstreamStatusActive,
++		IsActive:            true,
++	}
++	if err := mappingRepo.Create(&activeMapping); err != nil {
++		t.Fatalf("seed mapping: %v", err)
++	}
++
++	result, err := svc.SyncProviderCatalogWithClients(
++		context.Background(),
++		ProviderCatalogSyncInput{FansGurusConnectionID: 101, TGXConnectionID: 202},
++		fakeFansGurusCatalogClient{services: []upstream.FansGurusService{
++			{Service: 1, Name: "Instagram Followers", Category: "Instagram", Rate: "2.00", Min: 500, Max: 10000},
++		}},
++		fakeTGXCatalogClient{items: []upstream.TGXCommodity{
++			{Code: "IG-001", Name: "IG Account", Description: "Instagram aged account", Price: "100.00", Minimum: 1},
++		}},
++	)
++	if err != nil {
++		t.Fatalf("SyncProviderCatalogWithClients: %v", err)
++	}
++	if result.Deactivated != 1 {
++		t.Fatalf("deactivated=%d, want 1", result.Deactivated)
++	}
++
++	var got models.ProductMapping
++	if err := db.First(&got, activeMapping.ID).Error; err != nil {
++		t.Fatalf("load stale mapping: %v", err)
++	}
++	if got.IsActive || got.UpstreamStatus != models.UpstreamStatusInactive {
++		t.Fatalf("stale mapping was not deactivated: %+v", got)
++	}
++}

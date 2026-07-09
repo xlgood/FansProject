@@ -74,7 +74,7 @@ Verification:
 
 ## Phase 4: SKU Sync And Filtering
 
-Status: catalog policy, base database import, TGX race/widget handling, and live sync orchestration completed on 2026-07-09; raw payload history and stale deactivation remain pending.
+Status: catalog policy, database import, TGX race/widget handling, live sync orchestration, sync history, and stale deactivation completed on 2026-07-09; admin/worker entry points remain pending.
 
 Goal: build the catalog pipeline.
 
@@ -110,6 +110,10 @@ Completed verification:
 - Added provider catalog sync orchestration that pulls FansGurus/TGX catalog
   clients, builds the filtered intersection catalog, and imports by provider
   connection ID.
+- Added provider catalog sync run history with raw upstream payload snapshots
+  and summary counts.
+- Added stale mapping deactivation for provider records that disappear or leave
+  the filtered intersection.
 - Tests cover platform aliases, Telegram English and Chinese tokens, `tg`
   boundary matching, inactive upstream items, non-intersection filtering, and
   FansGurus/TGX price rules.
@@ -121,7 +125,6 @@ Completed verification:
 Remaining implementation:
 
 - Persist raw upstream catalog payloads.
-- Deactivate previously imported items that disappear or leave the intersection.
 - Wire sync orchestration to admin/worker entry points.
 
 ## Phase 5: Order Fulfillment
