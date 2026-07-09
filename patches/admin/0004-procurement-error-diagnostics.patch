@@ -1,0 +1,264 @@
+diff --git a/src/i18n/index.ts b/src/i18n/index.ts
+index 6db62b5..22fc5ee 100644
+--- a/src/i18n/index.ts
++++ b/src/i18n/index.ts
+@@ -118,6 +118,54 @@ const messages = {
+         orderStatus: '订单状态',
+         upstreamPayload: '上游响应',
+       },
++      diagnostics: {
++        title: '错误诊断',
++        raw: '原始信息',
++        temporaryUnavailable: {
++          title: '提交暂时不可用',
++          action: '建议稍后重试；若同类订单持续失败，请检查连接状态和服务可用性。',
++        },
++        mappingProduct: {
++          title: '商品映射缺失',
++          action: '请检查商品映射是否绑定了当前商品，并确认映射已启用。',
++        },
++        mappingSku: {
++          title: 'SKU 映射缺失',
++          action: '请检查 SKU 映射是否绑定了当前规格，并确认上游编码正确。',
++        },
++        manualForm: {
++          title: '提交表单配置异常',
++          action: '请检查商品表单字段、必填项和用户提交内容是否匹配。',
++        },
++        providerCode: {
++          title: '服务编码配置异常',
++          action: '请检查映射中的服务编码或共享编码是否填写正确。',
++        },
++        credentials: {
++          title: '连接凭证异常',
++          action: '请重新保存连接凭证，并确认加密密钥与运行环境一致。',
++        },
++        connection: {
++          title: '连接配置异常',
++          action: '请检查站点连接是否存在、协议是否支持、状态是否启用。',
++        },
++        balance: {
++          title: '余额或额度不足',
++          action: '请检查对应连接账户余额、额度或可用资源后再重试。',
++        },
++        stock: {
++          title: '库存不足或不可售',
++          action: '请检查对应服务库存、可售状态或更换可用 SKU。',
++        },
++        cancelUnsupported: {
++          title: '该订单不支持取消',
++          action: '已提交或已接受的采购单通常不能本地取消，可同步状态后继续处理。',
++        },
++        unknown: {
++          title: '未知错误',
++          action: '请查看原始信息、运行日志和连接配置后再决定是否重试。',
++        },
++      },
+       empty: '暂无采购单',
+     },
+     reconciliation: {
+@@ -4387,6 +4435,54 @@ const messages = {
+         orderStatus: '訂單狀態',
+         upstreamPayload: '上游回應',
+       },
++      diagnostics: {
++        title: '錯誤診斷',
++        raw: '原始資訊',
++        temporaryUnavailable: {
++          title: '提交暫時不可用',
++          action: '建議稍後重試；若同類訂單持續失敗，請檢查連接狀態和服務可用性。',
++        },
++        mappingProduct: {
++          title: '商品映射缺失',
++          action: '請檢查商品映射是否綁定了目前商品，並確認映射已啟用。',
++        },
++        mappingSku: {
++          title: 'SKU 映射缺失',
++          action: '請檢查 SKU 映射是否綁定了目前規格，並確認上游編碼正確。',
++        },
++        manualForm: {
++          title: '提交表單配置異常',
++          action: '請檢查商品表單欄位、必填項和使用者提交內容是否匹配。',
++        },
++        providerCode: {
++          title: '服務編碼配置異常',
++          action: '請檢查映射中的服務編碼或共享編碼是否填寫正確。',
++        },
++        credentials: {
++          title: '連接憑證異常',
++          action: '請重新儲存連接憑證，並確認加密金鑰與執行環境一致。',
++        },
++        connection: {
++          title: '連接配置異常',
++          action: '請檢查站點連接是否存在、協議是否支援、狀態是否啟用。',
++        },
++        balance: {
++          title: '餘額或額度不足',
++          action: '請檢查對應連接帳戶餘額、額度或可用資源後再重試。',
++        },
++        stock: {
++          title: '庫存不足或不可售',
++          action: '請檢查對應服務庫存、可售狀態或更換可用 SKU。',
++        },
++        cancelUnsupported: {
++          title: '該訂單不支援取消',
++          action: '已提交或已接受的採購單通常不能本地取消，可同步狀態後繼續處理。',
++        },
++        unknown: {
++          title: '未知錯誤',
++          action: '請查看原始資訊、執行日誌和連接配置後再決定是否重試。',
++        },
++      },
+       empty: '暫無採購單',
+     },
+     reconciliation: {
+@@ -8656,6 +8752,54 @@ const messages = {
+         orderStatus: 'Order Status',
+         upstreamPayload: 'Upstream Payload',
+       },
++      diagnostics: {
++        title: 'Error Diagnostics',
++        raw: 'Raw message',
++        temporaryUnavailable: {
++          title: 'Submit is temporarily unavailable',
++          action: 'Retry later. If similar orders keep failing, check the connection status and service availability.',
++        },
++        mappingProduct: {
++          title: 'Product mapping is missing',
++          action: 'Check whether the product mapping is bound to this product and enabled.',
++        },
++        mappingSku: {
++          title: 'SKU mapping is missing',
++          action: 'Check whether the SKU mapping is bound to this variant and uses the correct upstream code.',
++        },
++        manualForm: {
++          title: 'Submit form configuration issue',
++          action: 'Check product form fields, required fields, and the submitted customer data.',
++        },
++        providerCode: {
++          title: 'Service code configuration issue',
++          action: 'Check whether the service code or shared code in the mapping is correct.',
++        },
++        credentials: {
++          title: 'Connection credential issue',
++          action: 'Save the connection credentials again and confirm the encryption key matches the runtime environment.',
++        },
++        connection: {
++          title: 'Connection configuration issue',
++          action: 'Check whether the site connection exists, uses a supported protocol, and is enabled.',
++        },
++        balance: {
++          title: 'Balance or quota is insufficient',
++          action: 'Check the related connection account balance, quota, or available resources before retrying.',
++        },
++        stock: {
++          title: 'Stock is insufficient or unavailable',
++          action: 'Check service stock, sale status, or switch to an available SKU.',
++        },
++        cancelUnsupported: {
++          title: 'This order cannot be canceled',
++          action: 'Submitted or accepted procurement orders usually cannot be canceled locally. Sync status before continuing.',
++        },
++        unknown: {
++          title: 'Unknown error',
++          action: 'Review the raw message, runtime logs, and connection configuration before deciding whether to retry.',
++        },
++      },
+       empty: 'No procurement orders',
+     },
+     reconciliation: {
+diff --git a/src/views/admin/ProcurementOrders.vue b/src/views/admin/ProcurementOrders.vue
+index 4183030..62204dc 100644
+--- a/src/views/admin/ProcurementOrders.vue
++++ b/src/views/admin/ProcurementOrders.vue
+@@ -47,6 +47,19 @@ type ProcurementOrderWithRelations = AdminProcurementOrder & {
+   upstream_currency?: string
+ }
+ 
++type ProcurementDiagnosisKey =
++  | 'temporaryUnavailable'
++  | 'mappingProduct'
++  | 'mappingSku'
++  | 'manualForm'
++  | 'providerCode'
++  | 'credentials'
++  | 'connection'
++  | 'balance'
++  | 'stock'
++  | 'cancelUnsupported'
++  | 'unknown'
++
+ const { t } = useI18n()
+ const loading = ref(true)
+ const { refreshing, refreshList } = useListRefresh()
+@@ -433,6 +446,32 @@ const profitClass = (order: ProcurementOrderWithRelations) => {
+   return parseFloat(p) >= 0 ? 'text-emerald-600' : 'text-red-600'
+ }
+ 
++const procurementErrorDiagnosisKey = (message?: string): ProcurementDiagnosisKey => {
++  const raw = normalizeText(message).toLowerCase()
++  if (!raw) return 'unknown'
++  if (raw.includes('provider_submit_temporarily_unavailable')) return 'temporaryUnavailable'
++  if (raw.includes('no product mapping') || raw.includes('lookup product mapping')) return 'mappingProduct'
++  if (raw.includes('no sku mapping') || raw.includes('lookup sku mapping')) return 'mappingSku'
++  if (
++    raw.includes('fansgurus link is required')
++    || raw.includes('manual form required')
++    || raw.includes('manual form is required')
++    || raw.includes('missing manual form')
++    || raw.includes('invalid manual form')
++  ) return 'manualForm'
++  if (raw.includes('tgx shared code is required') || raw.includes('invalid fansgurus service id')) return 'providerCode'
++  if (raw.includes('decrypt tgx app key failed') || raw.includes('decrypt')) return 'credentials'
++  if (raw.includes('connection') && raw.includes('not found')) return 'connection'
++  if (raw.includes('unsupported provider protocol')) return 'connection'
++  if (raw.includes('balance') || raw.includes('insufficient') || raw.includes('not enough')) return 'balance'
++  if (raw.includes('product out of stock') || raw.includes('stock') || raw.includes('inventory') || raw.includes('sold out')) return 'stock'
++  if (raw.includes('procurement order cancel unsupported')) return 'cancelUnsupported'
++  return 'unknown'
++}
++
++const procurementErrorTitle = (message?: string) => t(`procurement.diagnostics.${procurementErrorDiagnosisKey(message)}.title`)
++const procurementErrorAction = (message?: string) => t(`procurement.diagnostics.${procurementErrorDiagnosisKey(message)}.action`)
++
+ const canRetry = (status: string) => ['failed', 'rejected'].includes(status)
+ const canSyncStatus = (status: string) => ['accepted'].includes(status)
+ const canCancel = (status: string) => ['pending', 'failed', 'rejected'].includes(status)
+@@ -686,7 +725,13 @@ onMounted(() => {
+             <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+               <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+             </svg>
+-            <span class="break-words text-xs text-red-700">{{ order.error_message }}</span>
++            <div class="min-w-0 space-y-1 text-xs">
++              <div class="font-semibold text-red-800">{{ procurementErrorTitle(order.error_message) }}</div>
++              <div class="break-words text-red-700">{{ procurementErrorAction(order.error_message) }}</div>
++              <div class="break-words font-mono text-[11px] text-red-600/80">
++                {{ t('procurement.diagnostics.raw') }}: {{ order.error_message }}
++              </div>
++            </div>
+           </div>
+         </div>
+       </div>
+@@ -891,10 +936,19 @@ onMounted(() => {
+           <!-- Error detail -->
+           <div v-if="detailOrder.error_message" class="rounded-lg border border-red-200 bg-red-50/50">
+             <div class="border-b border-red-200 bg-red-50 px-4 py-2 text-xs font-semibold text-red-700 uppercase">
+-              {{ t('procurement.columns.errorMessage') }}
++              {{ t('procurement.diagnostics.title') }}
+             </div>
+-            <div class="p-4 text-sm font-mono whitespace-pre-wrap break-all text-red-700">
+-              {{ detailOrder.error_message }}
++            <div class="space-y-3 p-4 text-sm text-red-700">
++              <div>
++                <div class="font-semibold text-red-800">{{ procurementErrorTitle(detailOrder.error_message) }}</div>
++                <div class="mt-1 break-words">{{ procurementErrorAction(detailOrder.error_message) }}</div>
++              </div>
++              <div>
++                <div class="text-xs font-semibold uppercase text-red-700/80">{{ t('procurement.diagnostics.raw') }}</div>
++                <div class="mt-1 font-mono whitespace-pre-wrap break-all text-red-700/90">
++                  {{ detailOrder.error_message }}
++                </div>
++              </div>
+             </div>
+           </div>
+ 

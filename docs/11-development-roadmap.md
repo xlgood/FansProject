@@ -200,6 +200,13 @@ Completed verification:
     locally canceled without a provider-side cancel capability;
   - admin cancel actions are limited to pending, failed, and rejected
     procurement orders.
+- Improved admin procurement diagnostics:
+  - procurement list/detail errors now show a diagnosis title, suggested
+    operator action, and the original raw error message;
+  - diagnostic labels cover mapping, form data, service codes, credentials,
+    connection config, balance/quota, stock, unsupported cancellation, and
+    unknown fallback cases in Simplified Chinese, Traditional Chinese, and
+    English.
 - Targeted tests passed:
   - `go test ./internal/service -run 'TestSubmitToUpstream_(FansGurusProvider|TGXProviderImmediateSecret|Success|NonRetryableError_Rejects|RetryableError_Retries)'`
   - `go test ./internal/service -run 'TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
@@ -217,7 +224,8 @@ Completed verification:
 
 Remaining implementation:
 
-- Improve admin diagnostics for provider error codes and next-action hints.
+- Confirm automatic periodic status polling/worker coverage.
+- Run an end-to-end local mock purchase flow.
 
 ## Phase 6: Frontend And Admin
 
