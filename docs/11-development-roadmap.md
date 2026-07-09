@@ -183,6 +183,13 @@ Completed verification:
     without `next_retry_at`.
   - Public order detail responses expose `fulfillment_error` for localized
     customer-facing messages.
+- Added a customer-side retry path for temporary fulfillment submission
+  failures:
+  - logged-in and guest order detail APIs expose `fulfillment_retryable`;
+  - logged-in and guest order details can trigger `fulfillment/retry`;
+  - parent order details surface retryable child-order fulfillment failures;
+  - classic and vault frontends show a localized `重新提交` / `Retry submission`
+    action without exposing upstream/API/provider wording.
 - Targeted tests passed:
   - `go test ./internal/service -run 'TestSubmitToUpstream_(FansGurusProvider|TGXProviderImmediateSecret|Success|NonRetryableError_Rejects|RetryableError_Retries)'`
   - `go test ./internal/service -run 'TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
@@ -195,7 +202,7 @@ Completed verification:
 
 Remaining implementation:
 
-- Expose provider fulfillment status and retry tools in admin.
+- Expose provider fulfillment status and retry/cancel tools in admin.
 
 ## Phase 6: Frontend And Admin
 

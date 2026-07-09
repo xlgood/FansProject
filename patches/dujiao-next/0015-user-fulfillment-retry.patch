@@ -1,0 +1,255 @@
+diff --git a/internal/dto/order.go b/internal/dto/order.go
+index 65c4158..2fd0bcf 100644
+--- a/internal/dto/order.go
++++ b/internal/dto/order.go
+@@ -79,6 +79,7 @@ type OrderDetail struct {
+ 	AllowedPaymentChannelIDs []uint            `json:"allowed_payment_channel_ids,omitempty"`
+ 	RefundRecords            []OrderRefundResp `json:"refund_records,omitempty"`
+ 	FulfillmentError         string            `json:"fulfillment_error,omitempty"`
++	FulfillmentRetryable     bool              `json:"fulfillment_retryable,omitempty"`
+ 	Items                    []OrderItemResp   `json:"items,omitempty"`
+ 	Fulfillment              *FulfillmentResp  `json:"fulfillment,omitempty"`
+ 	Children                 []OrderDetail     `json:"children,omitempty"`
+diff --git a/internal/http/handlers/public/order.go b/internal/http/handlers/public/order.go
+index 21b1260..529719e 100644
+--- a/internal/http/handlers/public/order.go
++++ b/internal/http/handlers/public/order.go
+@@ -114,12 +114,57 @@ func (h *Handler) enrichOrderWithFulfillmentErrors(detail *dto.OrderDetail) {
+ 		}
+ 		if msg := strings.TrimSpace(proc.ErrorMessage); msg != "" {
+ 			target.FulfillmentError = msg
++			target.FulfillmentRetryable = h.ProcurementOrderService.IsUserRetryableTemporaryFailure(proc)
+ 		}
+ 	}
+ 	apply(detail)
+ 	for i := range detail.Children {
+ 		apply(&detail.Children[i])
+ 	}
++	if strings.TrimSpace(detail.FulfillmentError) == "" {
++		for i := range detail.Children {
++			if strings.TrimSpace(detail.Children[i].FulfillmentError) == "" {
++				continue
++			}
++			detail.FulfillmentError = detail.Children[i].FulfillmentError
++			detail.FulfillmentRetryable = detail.Children[i].FulfillmentRetryable
++			break
++		}
++	}
++}
++
++func (h *Handler) orderDetailResponse(order *models.Order) dto.OrderDetail {
++	orderDetail := dto.NewOrderDetailTruncated(order)
++	h.enrichOrderWithAllowedChannels(order, &orderDetail)
++	h.enrichOrderWithRefundRecords(order, &orderDetail)
++	h.enrichOrderWithFulfillmentErrors(&orderDetail)
++	return orderDetail
++}
++
++func (h *Handler) retryFulfillmentForOrder(order *models.Order) error {
++	if h == nil || h.ProcurementOrderService == nil || order == nil {
++		return service.ErrProcurementNotFound
++	}
++	orderNos := make([]string, 0, 1+len(order.Children))
++	if no := strings.TrimSpace(order.OrderNo); no != "" {
++		orderNos = append(orderNos, no)
++	}
++	for i := range order.Children {
++		if no := strings.TrimSpace(order.Children[i].OrderNo); no != "" {
++			orderNos = append(orderNos, no)
++		}
++	}
++	for _, orderNo := range orderNos {
++		proc, err := h.ProcurementOrderService.GetByLocalOrderNo(orderNo)
++		if err != nil {
++			return err
++		}
++		if !h.ProcurementOrderService.IsUserRetryableTemporaryFailure(proc) {
++			continue
++		}
++		return h.ProcurementOrderService.RetryUserTemporaryFailure(proc.ID)
++	}
++	return service.ErrProcurementRetryDenied
+ }
+ 
+ // OrderItemRequest 订单项请求
+@@ -508,11 +553,48 @@ func (h *Handler) GetOrderByOrderNo(c *gin.Context) {
+ 		return
+ 	}
+ 
+-	orderDetail := dto.NewOrderDetailTruncated(order)
+-	h.enrichOrderWithAllowedChannels(order, &orderDetail)
+-	h.enrichOrderWithRefundRecords(order, &orderDetail)
+-	h.enrichOrderWithFulfillmentErrors(&orderDetail)
+-	response.Success(c, orderDetail)
++	response.Success(c, h.orderDetailResponse(order))
++}
++
++// RetryOrderFulfillment 重新提交临时未完成的交付请求（登录用户）
++func (h *Handler) RetryOrderFulfillment(c *gin.Context) {
++	uid, ok := shared.GetUserID(c)
++	if !ok {
++		return
++	}
++
++	orderNo := strings.TrimSpace(c.Param("order_no"))
++	if orderNo == "" {
++		shared.RespondError(c, response.CodeBadRequest, "error.order_item_invalid", nil)
++		return
++	}
++
++	tenant := tenantFromRequest(c)
++	order, err := h.OrderService.GetOrderByUserOrderNoForTenant(tenant, orderNo, uid)
++	if err != nil {
++		if errors.Is(err, service.ErrOrderNotFound) {
++			shared.RespondError(c, response.CodeNotFound, "error.order_not_found", nil)
++			return
++		}
++		shared.RespondError(c, response.CodeInternal, "error.order_fetch_failed", err)
++		return
++	}
++
++	if err := h.retryFulfillmentForOrder(order); err != nil {
++		if errors.Is(err, service.ErrProcurementNotFound) || errors.Is(err, service.ErrProcurementRetryDenied) {
++			shared.RespondError(c, response.CodeBadRequest, "error.order_item_invalid", nil)
++			return
++		}
++		shared.RespondError(c, response.CodeInternal, "error.order_update_failed", err)
++		return
++	}
++
++	refreshed, err := h.OrderService.GetOrderByUserOrderNoForTenant(tenant, orderNo, uid)
++	if err != nil {
++		shared.RespondError(c, response.CodeInternal, "error.order_fetch_failed", err)
++		return
++	}
++	response.Success(c, h.orderDetailResponse(refreshed))
+ }
+ 
+ // CancelOrder 用户取消订单
+diff --git a/internal/http/handlers/public/public.go b/internal/http/handlers/public/public.go
+index 146b426..0f7bf27 100644
+--- a/internal/http/handlers/public/public.go
++++ b/internal/http/handlers/public/public.go
+@@ -1307,11 +1307,51 @@ func (h *Handler) GetGuestOrderByOrderNo(c *gin.Context) {
+ 		shared.RespondError(c, response.CodeInternal, "error.order_fetch_failed", err)
+ 		return
+ 	}
+-	orderDetail := dto.NewOrderDetailTruncated(order)
+-	h.enrichOrderWithAllowedChannels(order, &orderDetail)
+-	h.enrichOrderWithRefundRecords(order, &orderDetail)
+-	h.enrichOrderWithFulfillmentErrors(&orderDetail)
+-	response.Success(c, orderDetail)
++	response.Success(c, h.orderDetailResponse(order))
++}
++
++// RetryGuestOrderFulfillment 重新提交临时未完成的交付请求（游客）
++func (h *Handler) RetryGuestOrderFulfillment(c *gin.Context) {
++	email := strings.TrimSpace(c.Query("email"))
++	password := strings.TrimSpace(c.Query("order_password"))
++	if email == "" {
++		shared.RespondError(c, response.CodeBadRequest, "error.guest_email_required", nil)
++		return
++	}
++	if password == "" {
++		shared.RespondError(c, response.CodeBadRequest, "error.guest_password_required", nil)
++		return
++	}
++	orderNo := strings.TrimSpace(c.Param("order_no"))
++	if orderNo == "" {
++		shared.RespondError(c, response.CodeBadRequest, "error.order_item_invalid", nil)
++		return
++	}
++	tenant := tenantFromRequest(c)
++	order, err := h.OrderService.GetOrderByGuestOrderNoForTenant(tenant, orderNo, email, password)
++	if err != nil {
++		if errors.Is(err, service.ErrGuestOrderNotFound) {
++			shared.RespondError(c, response.CodeNotFound, "error.guest_order_not_found", nil)
++			return
++		}
++		shared.RespondError(c, response.CodeInternal, "error.order_fetch_failed", err)
++		return
++	}
++	if err := h.retryFulfillmentForOrder(order); err != nil {
++		if errors.Is(err, service.ErrProcurementNotFound) || errors.Is(err, service.ErrProcurementRetryDenied) {
++			shared.RespondError(c, response.CodeBadRequest, "error.order_item_invalid", nil)
++			return
++		}
++		shared.RespondError(c, response.CodeInternal, "error.order_update_failed", err)
++		return
++	}
++
++	refreshed, err := h.OrderService.GetOrderByGuestOrderNoForTenant(tenant, orderNo, email, password)
++	if err != nil {
++		shared.RespondError(c, response.CodeInternal, "error.order_fetch_failed", err)
++		return
++	}
++	response.Success(c, h.orderDetailResponse(refreshed))
+ }
+ 
+ // DownloadGuestFulfillment 下载订单交付内容（游客）
+diff --git a/internal/router/router.go b/internal/router/router.go
+index ff80801..d86e34e 100644
+--- a/internal/router/router.go
++++ b/internal/router/router.go
+@@ -111,6 +111,7 @@ func SetupRouter(cfg *config.Config, c *provider.Container) *gin.Engine {
+ 			guest.GET("/orders", publicHandler.ListGuestOrders)
+ 			guest.GET("/orders/:order_no", publicHandler.GetGuestOrderByOrderNo)
+ 			guest.GET("/orders/:order_no/fulfillment/download", publicHandler.DownloadGuestFulfillment)
++			guest.POST("/orders/:order_no/fulfillment/retry", publicHandler.RetryGuestOrderFulfillment)
+ 			guest.POST("/payments", publicHandler.CreateGuestPayment)
+ 			guest.POST("/payments/:id/capture", publicHandler.CaptureGuestPayment)
+ 			guest.GET("/payments/latest", publicHandler.GetGuestLatestPayment)
+@@ -162,6 +163,7 @@ func SetupRouter(cfg *config.Config, c *provider.Container) *gin.Engine {
+ 			user.GET("/orders/stats", publicHandler.OrderStats)
+ 			user.GET("/orders/:order_no", publicHandler.GetOrderByOrderNo)
+ 			user.GET("/orders/:order_no/fulfillment/download", publicHandler.DownloadFulfillment)
++			user.POST("/orders/:order_no/fulfillment/retry", publicHandler.RetryOrderFulfillment)
+ 			user.POST("/orders/:order_no/cancel", publicHandler.CancelOrder)
+ 			user.POST("/payments", publicHandler.CreatePayment)
+ 			user.POST("/payments/:id/capture", publicHandler.CapturePayment)
+diff --git a/internal/service/procurement_order_service.go b/internal/service/procurement_order_service.go
+index 9a9967c..531f040 100644
+--- a/internal/service/procurement_order_service.go
++++ b/internal/service/procurement_order_service.go
+@@ -27,6 +27,7 @@ var (
+ 	ErrProcurementNotFound      = errors.New("procurement order not found")
+ 	ErrProcurementExists        = errors.New("procurement order already exists")
+ 	ErrProcurementStatusInvalid = errors.New("procurement order status invalid")
++	ErrProcurementRetryDenied   = errors.New("procurement order retry denied")
+ )
+ 
+ const providerSubmitTemporarilyUnavailable = "provider_submit_temporarily_unavailable"
+@@ -1194,6 +1195,33 @@ func (s *ProcurementOrderService) GetByLocalOrderNo(localOrderNo string) (*model
+ 	return s.procRepo.GetByLocalOrderNo(localOrderNo)
+ }
+ 
++// IsUserRetryableTemporaryFailure reports whether a failed procurement order can be retried by the customer.
++func (s *ProcurementOrderService) IsUserRetryableTemporaryFailure(procOrder *models.ProcurementOrder) bool {
++	if procOrder == nil {
++		return false
++	}
++	status := strings.ToLower(strings.TrimSpace(procOrder.Status))
++	if status != constants.ProcurementStatusFailed && status != constants.ProcurementStatusRejected {
++		return false
++	}
++	return strings.TrimSpace(procOrder.ErrorMessage) == providerSubmitTemporarilyUnavailable
++}
++
++// RetryUserTemporaryFailure lets a customer explicitly retry a temporary fulfillment submit failure.
++func (s *ProcurementOrderService) RetryUserTemporaryFailure(id uint) error {
++	procOrder, err := s.procRepo.GetByID(id)
++	if err != nil {
++		return fmt.Errorf("load procurement order: %w", err)
++	}
++	if procOrder == nil {
++		return ErrProcurementNotFound
++	}
++	if !s.IsUserRetryableTemporaryFailure(procOrder) {
++		return ErrProcurementRetryDenied
++	}
++	return s.RetryManual(id)
++}
++
+ // List 列表查询采购单
+ func (s *ProcurementOrderService) List(filter repository.ProcurementOrderListFilter) ([]models.ProcurementOrder, int64, error) {
+ 	orders, total, err := s.procRepo.List(filter)

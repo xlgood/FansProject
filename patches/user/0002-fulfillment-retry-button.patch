@@ -1,0 +1,309 @@
+diff --git a/src/api/order.ts b/src/api/order.ts
+index c33e402..3531825 100644
+--- a/src/api/order.ts
++++ b/src/api/order.ts
+@@ -11,6 +11,7 @@ export const userOrderAPI = {
+     detail: (orderNo: string, options?: any) => userApi.get(`/orders/${encodeURIComponent(orderNo)}`, options),
+     cancel: (orderNo: string) => userApi.post(`/orders/${encodeURIComponent(orderNo)}/cancel`),
+     downloadFulfillment: (orderNo: string) => userApi.get(`/orders/${encodeURIComponent(orderNo)}/fulfillment/download`, { blob: true }),
++    retryFulfillment: (orderNo: string) => userApi.post(`/orders/${encodeURIComponent(orderNo)}/fulfillment/retry`),
+ }
+ 
+ export const guestOrderAPI = {
+@@ -20,6 +21,7 @@ export const guestOrderAPI = {
+     list: (params: any) => userApi.get('/guest/orders', { params }),
+     detail: (orderNo: string, params: any, options?: any) => userApi.get(`/guest/orders/${encodeURIComponent(orderNo)}`, { params, ...(options || {}) }),
+     downloadFulfillment: (orderNo: string, params: any) => userApi.get(`/guest/orders/${encodeURIComponent(orderNo)}/fulfillment/download`, { params, blob: true }),
++    retryFulfillment: (orderNo: string, params: any) => userApi.post(`/guest/orders/${encodeURIComponent(orderNo)}/fulfillment/retry`, {}, { params }),
+     createPayment: (data: any) => userApi.post('/guest/payments', data),
+     capturePayment: (id: number, data: any) => userApi.post(`/guest/payments/${id}/capture`, data),
+     latestPayment: (params: any) => userApi.get('/guest/payments/latest', { params, silentBusinessError: true }),
+diff --git a/src/composables/useGuestOrderDetail.ts b/src/composables/useGuestOrderDetail.ts
+index 40e2a8c..8dc50a8 100644
+--- a/src/composables/useGuestOrderDetail.ts
++++ b/src/composables/useGuestOrderDetail.ts
+@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
+ import { guestOrderAPI } from '../api'
+ import { debounceAsync } from '../utils/debounce'
+ import { useOrderDisplayHelpers } from './useOrderDisplayHelpers'
++import { toast } from './useToast'
+ 
+ /**
+  * 游客订单详情逻辑（classic + vault 共用）。
+@@ -21,6 +22,7 @@ export function useGuestOrderDetail() {
+     order_password: '',
+   })
+   const fulfillmentDownloading = ref(false)
++  const fulfillmentRetrying = ref(false)
+ 
+   const helpers = useOrderDisplayHelpers(order)
+ 
+@@ -97,6 +99,23 @@ export function useGuestOrderDetail() {
+     await debouncedLoadOrder()
+   }
+ 
++  const handleRetryFulfillment = async () => {
++    if (!order.value || fulfillmentRetrying.value || !hasAuth.value) return
++    fulfillmentRetrying.value = true
++    try {
++      const response = await guestOrderAPI.retryFulfillment(order.value.order_no, {
++        email: auth.value.email,
++        order_password: auth.value.order_password,
++      })
++      order.value = response.data.data
++      toast.success(t('orderDetail.fulfillmentRetrySuccess'))
++    } catch {
++      toast.error(t('orderDetail.fulfillmentRetryFailed'))
++    } finally {
++      fulfillmentRetrying.value = false
++    }
++  }
++
+   const clearAuth = () => {
+     localStorage.removeItem('guest_order_auth')
+     auth.value = { email: '', order_password: '' }
+@@ -127,6 +146,8 @@ export function useGuestOrderDetail() {
+     clearAuth,
+     fulfillmentDownloading,
+     handleDownloadFulfillment,
++    fulfillmentRetrying,
++    handleRetryFulfillment,
+     ...helpers,
+   }
+ }
+diff --git a/src/composables/useOrderDetail.ts b/src/composables/useOrderDetail.ts
+index 26f47a2..dc847de 100644
+--- a/src/composables/useOrderDetail.ts
++++ b/src/composables/useOrderDetail.ts
+@@ -19,6 +19,7 @@ export function useOrderDetail() {
+   const loading = ref(true)
+   const order = ref<any>(null)
+   const fulfillmentDownloading = ref(false)
++  const fulfillmentRetrying = ref(false)
+ 
+   const helpers = useOrderDisplayHelpers(order)
+ 
+@@ -71,6 +72,20 @@ export function useOrderDetail() {
+     }
+   }
+ 
++  const handleRetryFulfillment = async () => {
++    if (!order.value || fulfillmentRetrying.value) return
++    fulfillmentRetrying.value = true
++    try {
++      const response = await userOrderAPI.retryFulfillment(order.value.order_no)
++      order.value = response.data.data
++      toast.success(t('orderDetail.fulfillmentRetrySuccess'))
++    } catch {
++      toast.error(t('orderDetail.fulfillmentRetryFailed'))
++    } finally {
++      fulfillmentRetrying.value = false
++    }
++  }
++
+   onMounted(() => {
+     if (!route.params.order_no) {
+       router.push('/me/orders')
+@@ -90,6 +105,8 @@ export function useOrderDetail() {
+     cancelOrder,
+     fulfillmentDownloading,
+     handleDownloadFulfillment,
++    fulfillmentRetrying,
++    handleRetryFulfillment,
+     ...helpers,
+   }
+ }
+diff --git a/src/i18n/index.ts b/src/i18n/index.ts
+index 9f960a2..81dde30 100644
+--- a/src/i18n/index.ts
++++ b/src/i18n/index.ts
+@@ -1608,6 +1608,10 @@ const messages = {
+             fulfillmentTotalLines: '共 {count} 条交付内容',
+             fulfillmentDownloading: '下载中...',
+             fulfillmentTruncatedHint: '当前仅显示前 100 条预览，请下载获取完整交付内容',
++            fulfillmentRetry: '重新提交',
++            fulfillmentRetrying: '提交中...',
++            fulfillmentRetrySuccess: '已重新提交，请稍后刷新查看结果。',
++            fulfillmentRetryFailed: '重新提交失败，请稍后再试或联系客服处理。',
+         },
+         guestOrders: {
+             title: '游客订单查询',
+@@ -3346,6 +3350,10 @@ const messages = {
+             fulfillmentTotalLines: '共 {count} 條交付內容',
+             fulfillmentDownloading: '下載中...',
+             fulfillmentTruncatedHint: '當前僅顯示前 100 條預覽，請下載獲取完整交付內容',
++            fulfillmentRetry: '重新提交',
++            fulfillmentRetrying: '提交中...',
++            fulfillmentRetrySuccess: '已重新提交，請稍後刷新查看結果。',
++            fulfillmentRetryFailed: '重新提交失敗，請稍後再試或聯絡客服處理。',
+         },
+         guestOrders: {
+             title: '遊客訂單查詢',
+@@ -5037,6 +5045,10 @@ const messages = {
+             fulfillmentTotalLines: '{count} items in total',
+             fulfillmentDownloading: 'Downloading...',
+             fulfillmentTruncatedHint: 'Showing first 100 items only. Please download for full content.',
++            fulfillmentRetry: 'Retry submission',
++            fulfillmentRetrying: 'Submitting...',
++            fulfillmentRetrySuccess: 'Submission retried. Please refresh later to check the result.',
++            fulfillmentRetryFailed: 'Retry failed. Please try again later or contact support.',
+         },
+         guestOrders: {
+             title: 'Guest Order Lookup',
+diff --git a/src/templates/vault/GuestOrderDetail.vue b/src/templates/vault/GuestOrderDetail.vue
+index 2e43575..12fb395 100644
+--- a/src/templates/vault/GuestOrderDetail.vue
++++ b/src/templates/vault/GuestOrderDetail.vue
+@@ -58,7 +58,9 @@
+         :order="order"
+         variant="guest"
+         :fulfillment-downloading="fulfillmentDownloading"
++        :fulfillment-retrying="fulfillmentRetrying"
+         @download="handleDownloadFulfillment"
++        @retry="handleRetryFulfillment"
+       />
+     </template>
+   </div>
+@@ -78,6 +80,7 @@ const { t } = useI18n()
+ const {
+   loading, order, authError, auth, showAuthForm, handleAuthSubmit, clearAuth,
+   fulfillmentDownloading, handleDownloadFulfillment,
++  fulfillmentRetrying, handleRetryFulfillment,
+   statusLabel, statusVariant, formatDate, formatMoney,
+ } = useGuestOrderDetail()
+ </script>
+diff --git a/src/templates/vault/OrderDetail.vue b/src/templates/vault/OrderDetail.vue
+index 1163095..e865bfa 100644
+--- a/src/templates/vault/OrderDetail.vue
++++ b/src/templates/vault/OrderDetail.vue
+@@ -50,7 +50,9 @@
+         :order="order"
+         variant="user"
+         :fulfillment-downloading="fulfillmentDownloading"
++        :fulfillment-retrying="fulfillmentRetrying"
+         @download="handleDownloadFulfillment"
++        @retry="handleRetryFulfillment"
+       />
+     </template>
+   </div>
+@@ -68,6 +70,7 @@ const { t } = useI18n()
+ 
+ const {
+   loading, order, debouncedLoadOrder, cancelOrder, fulfillmentDownloading, handleDownloadFulfillment,
++  fulfillmentRetrying, handleRetryFulfillment,
+   statusLabel, statusVariant, formatDate, formatMoney,
+ } = useOrderDetail()
+ </script>
+diff --git a/src/templates/vault/components/VaultOrderBody.vue b/src/templates/vault/components/VaultOrderBody.vue
+index b5d4dd0..c5e91c4 100644
+--- a/src/templates/vault/components/VaultOrderBody.vue
++++ b/src/templates/vault/components/VaultOrderBody.vue
+@@ -1,7 +1,18 @@
+ <template>
+   <div class="grid gap-[18px]">
+-    <section v-if="order.fulfillment_error" class="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-[13px] font-semibold text-warning">
+-      {{ fulfillmentErrorText(order.fulfillment_error) }}
++    <section v-if="order.fulfillment_error" class="flex flex-col gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-[13px] font-semibold text-warning sm:flex-row sm:items-center sm:justify-between">
++      <span>{{ fulfillmentErrorText(order.fulfillment_error) }}</span>
++      <Button
++        v-if="order.fulfillment_retryable"
++        type="button"
++        size="sm"
++        variant="outline"
++        class="shrink-0 border-warning/40 bg-background/80 text-warning hover:bg-warning/10"
++        :disabled="fulfillmentRetrying"
++        @click="emit('retry')"
++      >
++        {{ fulfillmentRetrying ? t('orderDetail.fulfillmentRetrying') : t('orderDetail.fulfillmentRetry') }}
++      </Button>
+     </section>
+ 
+     <!-- 金额明细 -->
+@@ -148,6 +159,7 @@
+ import { toRef } from 'vue'
+ import { useI18n } from 'vue-i18n'
+ import { Badge } from '@/components/ui/badge'
++import { Button } from '@/components/ui/button'
+ import VaultOrderItem from './VaultOrderItem.vue'
+ import VaultOrderFulfillment from './VaultOrderFulfillment.vue'
+ import { useOrderDisplayHelpers } from '../../../composables/useOrderDisplayHelpers'
+@@ -156,10 +168,12 @@ const props = defineProps<{
+   order: any
+   variant: 'user' | 'guest'
+   fulfillmentDownloading: boolean
++  fulfillmentRetrying: boolean
+ }>()
+ 
+ const emit = defineEmits<{
+   (e: 'download', orderNo: string): void
++  (e: 'retry'): void
+ }>()
+ 
+ const { t } = useI18n()
+diff --git a/src/views/GuestOrderDetail.vue b/src/views/GuestOrderDetail.vue
+index 6a3f574..451b376 100644
+--- a/src/views/GuestOrderDetail.vue
++++ b/src/views/GuestOrderDetail.vue
+@@ -65,8 +65,19 @@
+           </div>
+         </div>
+ 
+-        <div v-if="order.fulfillment_error" class="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+-          {{ fulfillmentErrorText(order.fulfillment_error) }}
++        <div v-if="order.fulfillment_error" class="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 sm:flex-row sm:items-center sm:justify-between">
++          <span>{{ fulfillmentErrorText(order.fulfillment_error) }}</span>
++          <Button
++            v-if="order.fulfillment_retryable"
++            type="button"
++            size="sm"
++            variant="outline"
++            class="shrink-0 border-amber-300 bg-white/70 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
++            :disabled="fulfillmentRetrying"
++            @click="handleRetryFulfillment"
++          >
++            {{ fulfillmentRetrying ? t('orderDetail.fulfillmentRetrying') : t('orderDetail.fulfillmentRetry') }}
++          </Button>
+         </div>
+ 
+         <div class="rounded-2xl border bg-card shadow-sm p-6">
+@@ -435,6 +446,7 @@ const { t } = useI18n()
+ const {
+   loading, order, authError, auth, showAuthForm, handleAuthSubmit, clearAuth,
+   fulfillmentDownloading, handleDownloadFulfillment,
++  fulfillmentRetrying, handleRetryFulfillment,
+   statusLabel, statusVariant, fulfillmentTypeLabelText, fulfillmentStatusLabelText,
+   fulfillmentErrorText,
+   formatDate, getLocalizedText, formatMoney, formatDiscountMoney, hasDiscountAmount,
+diff --git a/src/views/OrderDetail.vue b/src/views/OrderDetail.vue
+index dcae16b..74a3945 100644
+--- a/src/views/OrderDetail.vue
++++ b/src/views/OrderDetail.vue
+@@ -79,8 +79,19 @@
+           </div>
+         </div>
+ 
+-        <div v-if="order.fulfillment_error" class="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+-          {{ fulfillmentErrorText(order.fulfillment_error) }}
++        <div v-if="order.fulfillment_error" class="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 sm:flex-row sm:items-center sm:justify-between">
++          <span>{{ fulfillmentErrorText(order.fulfillment_error) }}</span>
++          <Button
++            v-if="order.fulfillment_retryable"
++            type="button"
++            size="sm"
++            variant="outline"
++            class="shrink-0 border-amber-300 bg-white/70 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
++            :disabled="fulfillmentRetrying"
++            @click="handleRetryFulfillment"
++          >
++            {{ fulfillmentRetrying ? t('orderDetail.fulfillmentRetrying') : t('orderDetail.fulfillmentRetry') }}
++          </Button>
+         </div>
+ 
+         <div class="rounded-2xl border bg-card shadow-sm p-6">
+@@ -461,5 +472,6 @@ const {
+   hasItemDiscount, formatItemDiscountTotal, formatItemPaidAmount, resolvedChildStatus,
+   fulfillmentDeliveryLines, instructionBlocks, isFulfillmentTruncated,
+   fulfillmentCopied, handleCopyFulfillment, fulfillmentDownloading, handleDownloadFulfillment,
++  fulfillmentRetrying, handleRetryFulfillment,
+ } = useOrderDetail()
+ </script>
