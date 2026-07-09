@@ -1,0 +1,136 @@
+diff --git a/internal/service/procurement_order_service_test.go b/internal/service/procurement_order_service_test.go
+index 85ef632..488e7a6 100644
+--- a/internal/service/procurement_order_service_test.go
++++ b/internal/service/procurement_order_service_test.go
+@@ -1344,6 +1344,131 @@ func TestProviderFulfillmentEndToEnd_FansGurusMock(t *testing.T) {
+ 	}
+ }
+ 
++func TestProviderFulfillmentEndToEnd_TGXMockDelayedSecret(t *testing.T) {
++	db := setupProcurementTestDB(t)
++
++	order := createProcTestOrder(t, db, "PROC-E2E-TGX-001", constants.OrderStatusPaid, constants.FulfillmentTypeUpstream)
++	setProcTestManualSubmission(t, db, order.ID, models.JSON{"email": "buyer@example.com"})
++
++	var tradeCalls int
++	var queryCalls int
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if err := r.ParseForm(); err != nil {
++			t.Fatalf("ParseForm: %v", err)
++		}
++		if got := r.FormValue("app_id"); got != "tgx-app-id" {
++			t.Fatalf("app_id=%s, want tgx-app-id", got)
++		}
++		if r.FormValue("app_key") != "" {
++			t.Fatal("app_key must not be sent")
++		}
++		w.Header().Set("Content-Type", "application/json")
++		switch r.URL.Path {
++		case "/commodity/trade":
++			tradeCalls++
++			if got := r.FormValue("shared_code"); got != "IG-001" {
++				t.Fatalf("shared_code=%s, want IG-001", got)
++			}
++			if got := r.FormValue("race"); got != "普通" {
++				t.Fatalf("race=%s, want 普通", got)
++			}
++			if got := r.FormValue("request_no"); got != order.OrderNo {
++				t.Fatalf("request_no=%s, want %s", got, order.OrderNo)
++			}
++			if got := r.FormValue("email"); got != "buyer@example.com" {
++				t.Fatalf("email=%s, want buyer@example.com", got)
++			}
++			_ = json.NewEncoder(w).Encode(map[string]any{
++				"code": 0,
++				"data": map[string]string{"trade_no": "TGX-E2E-9988", "status": "pending"},
++			})
++		case "/commodity/query":
++			queryCalls++
++			if got := r.FormValue("trade_no"); got != "TGX-E2E-9988" {
++				t.Fatalf("trade_no=%s, want TGX-E2E-9988", got)
++			}
++			_ = json.NewEncoder(w).Encode(map[string]any{
++				"code": 0,
++				"data": map[string]string{"trade_no": "TGX-E2E-9988", "secret": "account:pass", "status": "completed"},
++			})
++		default:
++			t.Fatalf("path=%s", r.URL.Path)
++		}
++	}))
++	defer server.Close()
++
++	connSvc := NewSiteConnectionService(repository.NewSiteConnectionRepository(db), "test-key", t.TempDir())
++	conn, err := connSvc.Create(CreateConnectionInput{
++		Name: "tgx", BaseURL: server.URL,
++		ApiKey: "tgx-app-id", ApiSecret: "tgx-app-key", Protocol: constants.ConnectionProtocolTGXAccount,
++	})
++	if err != nil {
++		t.Fatalf("create connection: %v", err)
++	}
++	pm := &models.ProductMapping{
++		ConnectionID:        conn.ID,
++		LocalProductID:      1,
++		UpstreamProductCode: "IG-001",
++		Provider:            upstream.CatalogProviderTGX,
++		IsActive:            true,
++	}
++	if err := db.Create(pm).Error; err != nil {
++		t.Fatalf("create product mapping: %v", err)
++	}
++	if err := db.Create(&models.SKUMapping{ProductMappingID: pm.ID, LocalSKUID: 1, UpstreamSKUCode: "IG-001|普通", UpstreamIsActive: true}).Error; err != nil {
++		t.Fatalf("create sku mapping: %v", err)
++	}
++	svc := newTestProcurementService(db, connSvc)
++
++	if err := svc.CreateForOrder(order.ID); err != nil {
++		t.Fatalf("CreateForOrder: %v", err)
++	}
++	proc, err := repository.NewProcurementOrderRepository(db).GetByLocalOrderID(order.ID)
++	if err != nil {
++		t.Fatalf("load procurement: %v", err)
++	}
++	if proc == nil || proc.Status != constants.ProcurementStatusPending {
++		t.Fatalf("procurement after create=%+v, want pending", proc)
++	}
++
++	if err := svc.SubmitToUpstream(proc.ID); err != nil {
++		t.Fatalf("SubmitToUpstream: %v", err)
++	}
++	var submitted models.ProcurementOrder
++	db.First(&submitted, proc.ID)
++	if submitted.Status != constants.ProcurementStatusAccepted || submitted.UpstreamOrderNo != "TGX-E2E-9988" {
++		t.Fatalf("procurement after submit=%+v, want accepted upstream TGX-E2E-9988", submitted)
++	}
++	var fulfillingOrder models.Order
++	db.First(&fulfillingOrder, order.ID)
++	if fulfillingOrder.Status != constants.OrderStatusFulfilling {
++		t.Fatalf("order after submit status=%s, want %s", fulfillingOrder.Status, constants.OrderStatusFulfilling)
++	}
++
++	svc.SyncAcceptedOrders()
++
++	var fulfilledProc models.ProcurementOrder
++	db.First(&fulfilledProc, proc.ID)
++	if fulfilledProc.Status != constants.ProcurementStatusFulfilled {
++		t.Fatalf("procurement after sync status=%s, want %s", fulfilledProc.Status, constants.ProcurementStatusFulfilled)
++	}
++	var deliveredOrder models.Order
++	db.First(&deliveredOrder, order.ID)
++	if deliveredOrder.Status != constants.OrderStatusDelivered {
++		t.Fatalf("order after sync status=%s, want %s", deliveredOrder.Status, constants.OrderStatusDelivered)
++	}
++	var fulfillment models.Fulfillment
++	if err := db.Where("order_id = ?", order.ID).First(&fulfillment).Error; err != nil {
++		t.Fatalf("load fulfillment: %v", err)
++	}
++	if fulfillment.Payload != "account:pass" {
++		t.Fatalf("payload=%q, want account:pass", fulfillment.Payload)
++	}
++	if tradeCalls != 1 || queryCalls != 1 {
++		t.Fatalf("tradeCalls=%d queryCalls=%d, want 1/1", tradeCalls, queryCalls)
++	}
++}
++
+ func TestCancelManual_ProviderAcceptedUnsupported(t *testing.T) {
+ 	db := setupProcurementTestDB(t)
+ 

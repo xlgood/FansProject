@@ -221,6 +221,13 @@ Completed verification:
   - mocked FansGurus `status` completes the procurement order through
     `SyncAcceptedOrders()`;
   - the local order reaches delivered without calling any real upstream API.
+- Added TGX local mock end-to-end account fulfillment coverage:
+  - mocked TGX `/commodity/trade` accepts the account order and returns a
+    pending trade number;
+  - mocked TGX `/commodity/query` later returns completed status and account
+    secret;
+  - the procurement order reaches fulfilled, the local order reaches delivered,
+    and the account secret is stored in fulfillment payload.
 - Targeted tests passed:
   - `go test ./internal/service -run 'TestSubmitToUpstream_(FansGurusProvider|TGXProviderImmediateSecret|Success|NonRetryableError_Rejects|RetryableError_Retries)'`
   - `go test ./internal/service -run 'TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
@@ -233,6 +240,7 @@ Completed verification:
   - `go test ./internal/service -run 'TestCancelManual_(ProviderAcceptedUnsupported|FailedLocalOnlyCancels)'`
   - `go test ./internal/service -run 'TestSyncAcceptedOrders_FansGurusCompleted|TestPollUpstreamStatus_(FansGurusCompleted|TGXQueryDeliveredSecret|TGXQueryPendingKeepsAccepted|Delivered|FulfilledMappedToDelivered)'`
   - `go test ./internal/service -run 'TestProviderFulfillmentEndToEnd_FansGurusMock|TestSyncAcceptedOrders_FansGurusCompleted|TestSubmitToUpstream_FansGurusProvider|TestPollUpstreamStatus_FansGurusCompleted'`
+  - `go test ./internal/service -run 'TestProviderFulfillmentEndToEnd_TGXMockDelayedSecret|TestSubmitToUpstream_TGXProviderImmediateSecret|TestPollUpstreamStatus_TGXQueryDeliveredSecret|TestPollUpstreamStatus_TGXQueryPendingKeepsAccepted'`
   - `go test ./internal/service -run 'Test(ProviderFulfillmentEndToEnd|CreateForOrder|SubmitToUpstream|PollUpstreamStatus|SyncAcceptedOrders|CancelManual)'`
   - `go test ./internal/worker`
   - `cd user && ./node_modules/.bin/vue-tsc -b`
@@ -242,7 +250,7 @@ Completed verification:
 
 Remaining implementation:
 
-- Add TGX mock end-to-end coverage for delivered account secrets.
+- Run a frontend/admin local smoke pass against mocked backend data.
 
 ## Phase 6: Frontend And Admin
 
