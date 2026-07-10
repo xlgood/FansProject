@@ -60,6 +60,8 @@ Decide these before editing production files:
 ## Secret Inventory
 
 Generate strong unique values. Do not reuse local development credentials.
+Use `docs/28-secret-generation-guide.md` for generation commands and fill
+locations.
 
 | Secret | Target file/setting | Notes |
 | --- | --- | --- |
