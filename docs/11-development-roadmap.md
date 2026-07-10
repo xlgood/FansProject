@@ -348,3 +348,30 @@ Remaining implementation:
 - Execute the production domain and branding checklist after the final domain
   is selected.
 - Repeat browser smoke on the final production domain before launch.
+
+## Phase 8: Production Security And Compliance
+
+Status: launch security checklist documented on 2026-07-10. Details are
+recorded in `docs/18-production-security-compliance-checklist.md`.
+
+Goal: make production launch blockers explicit before live traffic or payments.
+
+Tasks:
+
+- Rotate and externalize all production secrets.
+- Lock CORS and public origins to final domains.
+- Configure final payment/webhook/callback domains.
+- Verify frontend bundles contain no provider/payment secrets.
+- Verify public copy does not expose upstream/API/procurement details.
+- Confirm admin 2FA, RBAC, and rate limiting.
+- Confirm browser security headers at CDN/reverse proxy.
+- Add app-level HTTP server timeouts or document equivalent reverse-proxy
+  controls before direct internet exposure.
+
+Success criteria:
+
+- No default secrets or placeholder credentials remain.
+- Live payment, provider sync, and order fulfillment can be disabled quickly.
+- Final domain runtime smoke passes.
+- Public users cannot see Telegram SKUs, non-intersection platforms, or
+  internal fulfillment wording.
