@@ -329,15 +329,18 @@ Completed verification:
   `zh-TW`, `en`, and `x-default`.
 - Backend sitemap generation includes unprefixed and locale-prefixed variants
   for public static pages, categories, products, and posts.
+- Browser smoke confirmed `/zh-CN`, `/zh-TW/products`, and `/en/products`
+  render with the expected locale and `hreflang` metadata.
 - Existing branding and SEO config surfaces were confirmed for launch asset
   replacement.
 - Targeted checks passed:
   - `go test ./internal/http/handlers/public -run 'Test(LocaleFromCountryCode|ResolvePublicDefaultLocale)'`
   - `cd user && ./node_modules/.bin/vue-tsc -b`
   - `go test ./internal/service -run TestSitemapService`
+  - browser smoke through local Chrome DevTools on locale-prefixed URLs
 
 Remaining implementation:
 
 - Finalize primary domain, placeholder text replacement, and production
   favicon/logo/OG assets.
-- Run browser smoke on locale-prefixed URLs before production launch.
+- Repeat browser smoke on the final production domain before launch.

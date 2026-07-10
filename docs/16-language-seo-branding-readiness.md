@@ -70,3 +70,48 @@ GOCACHE=/Users/river/FansProject/dujiao-next/.gocache \
 GOMODCACHE=/Users/river/FansProject/dujiao-next/.gomodcache \
 go test ./internal/service -run TestSitemapService
 ```
+
+## Browser Smoke
+
+Local services:
+
+```bash
+cd dujiao-next
+GOPROXY=https://goproxy.cn,direct \
+GOCACHE=/Users/river/FansProject/dujiao-next/.gocache \
+GOMODCACHE=/Users/river/FansProject/dujiao-next/.gomodcache \
+go run ./cmd/server -mode api
+
+cd user
+VITE_API_BASE_URL=http://127.0.0.1:8080 ./node_modules/.bin/vite --host 127.0.0.1 --port 5173
+```
+
+Checked URLs:
+
+- `http://127.0.0.1:5173/zh-CN`
+- `http://127.0.0.1:5173/zh-TW/products`
+- `http://127.0.0.1:5173/en/products`
+
+Result:
+
+- All checked locale URLs returned `200 OK`.
+- Browser-rendered pages mounted Vue app content.
+- `/zh-CN` set `html lang="zh-CN"` and saved locale `zh-CN`.
+- `/zh-TW/products` set `html lang="zh-TW"` and saved locale `zh-TW`.
+- `/en/products` set `html lang="en-US"` and saved locale `en-US`.
+- Product pages rendered localized page titles:
+  - `商品中心`
+  - `Products`
+- Canonical links stayed unprefixed.
+- `hreflang` alternates were present for `zh-CN`, `zh-TW`, `en`, and
+  `x-default`.
+- `sitemap.xml` included locale-prefixed static URLs such as `/zh-CN`,
+  `/zh-TW`, `/en`, and `/zh-CN/products`.
+
+Finding fixed during smoke:
+
+- Initial browser run failed before Vue mount with `TypeError: aliases is not
+  iterable`.
+- Cause: localized route copies set `alias: undefined`.
+- Fix: omit the `alias` field on localized route copies instead of setting it
+  to `undefined`.

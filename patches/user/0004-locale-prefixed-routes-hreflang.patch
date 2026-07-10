@@ -73,7 +73,7 @@ index 7209639..540727a 100644
      meta: () => {
        const tags: Array<{ name?: string; property?: string; content: string }> = []
 diff --git a/src/router/index.ts b/src/router/index.ts
-index 33af2c3..41f72c6 100644
+index 33af2c3..f814a95 100644
 --- a/src/router/index.ts
 +++ b/src/router/index.ts
 @@ -4,8 +4,11 @@ import { useAppStore } from '../stores/app'
@@ -88,7 +88,7 @@ index 33af2c3..41f72c6 100644
  
  const homeViewLoader: RouteComponentLoader = () => import('../views/Home.vue')
  const productsViewLoader: RouteComponentLoader = () => import('../views/Products.vue')
-@@ -99,6 +102,259 @@ export const warmupCommonRoutes = () => {
+@@ -99,6 +102,261 @@ export const warmupCommonRoutes = () => {
      window.addEventListener('load', startWarmup, { once: true })
  }
  
@@ -115,17 +115,19 @@ index 33af2c3..41f72c6 100644
 +const withLocaleRoutes = (routes: AppRoute[]): AppRoute[] => {
 +    const localized = routes
 +        .filter((route) => route.name && publicLocaleRouteNames.has(String(route.name)))
-+        .map((route) => ({
-+            ...route,
-+            path: `/:locale(${localePrefixPattern})${route.path === '/' ? '' : route.path}`,
-+            name: `${String(route.name)}-locale`,
-+            alias: undefined,
-+            meta: {
-+                ...(route.meta || {}),
-+                localeRoute: true,
-+                baseRouteName: route.name,
-+            },
-+        }))
++        .map((route) => {
++            const { alias: _alias, ...routeWithoutAlias } = route
++            return {
++                ...routeWithoutAlias,
++                path: `/:locale(${localePrefixPattern})${route.path === '/' ? '' : route.path}`,
++                name: `${String(route.name)}-locale`,
++                meta: {
++                    ...(route.meta || {}),
++                    localeRoute: true,
++                    baseRouteName: route.name,
++                },
++            }
++        })
 +
 +    const catchAllIndex = routes.findIndex((route) => String(route.path || '').includes(':pathMatch'))
 +    if (catchAllIndex < 0) return [...routes, ...localized]
@@ -348,7 +350,7 @@ index 33af2c3..41f72c6 100644
  const router = createRouter({
      history: createWebHistory(import.meta.env.BASE_URL),
      scrollBehavior(to, _from, savedPosition) {
-@@ -110,214 +366,7 @@ const router = createRouter({
+@@ -110,214 +368,7 @@ const router = createRouter({
          }
          return { top: 0 }
      },
@@ -564,7 +566,7 @@ index 33af2c3..41f72c6 100644
  })
  
  // Navigation Guard
-@@ -326,6 +375,12 @@ router.beforeEach(async (to, _from, next) => {
+@@ -326,6 +377,12 @@ router.beforeEach(async (to, _from, next) => {
      const appStore = useAppStore()
      void captureAffiliateFromRoute(to)
  
