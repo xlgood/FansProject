@@ -29,6 +29,8 @@ gates:
 - Reverse proxy/CDN plan from `docs/23-reverse-proxy-cdn.md`.
 - Operations runbook from `docs/24-operations-runbook.md`.
 - Final acceptance checklist from `docs/25-launch-acceptance-checklist.md`.
+- Gate 1 production config workbook from
+  `docs/27-gate1-production-config-workbook.md`.
 
 Input templates:
 
@@ -38,6 +40,8 @@ Input templates:
 - `ops/gate1/admin.env.production.example`
 
 Copy these outside git-tracked paths and replace all placeholders before Gate 1.
+Use `docs/27-gate1-production-config-workbook.md` to track owners, required
+values, and validation evidence.
 
 Do not commit these files when they contain real secrets.
 

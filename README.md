@@ -51,6 +51,7 @@
 - `docs/24-operations-runbook.md`：生产运维操作手册，含启停、日志、禁用、回滚和事故处理。
 - `docs/25-launch-acceptance-checklist.md`：上线前人工验收与最终 sign-off 清单。
 - `docs/26-final-project-audit.md`：进入真实生产配置前的最终项目审计和剩余上线 gate。
+- `docs/27-gate1-production-config-workbook.md`：Gate 1 真实生产配置准备工作单。
 - `ops/compose/docker-compose.production.yml`：最小三服务分离部署 Compose 模板。
 - `ops/gate1/`：Gate 1 审计输入模板，含 `site_config` 和前后台生产 env 示例。
 
