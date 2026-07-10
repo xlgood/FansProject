@@ -1,0 +1,102 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ${POSTGRES_DATA_PATH}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - ${REDIS_DATA_PATH}:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ../../dujiao-next
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION}
+    image: target/dujiao-api:${APP_VERSION}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["./dujiao-api", "-mode", "api"]
+    ports:
+      - "${API_HOST_PORT}:8080"
+    volumes:
+      - ${DUJIAO_CONFIG_PATH}:/app/config.yml:ro
+      - ${UPLOADS_PATH}:/app/uploads
+      - ${LOGS_PATH}:/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    image: target/dujiao-api:${APP_VERSION}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    command: ["./dujiao-api", "-mode", "worker"]
+    volumes:
+      - ${DUJIAO_CONFIG_PATH}:/app/config.yml:ro
+      - ${UPLOADS_PATH}:/app/uploads
+      - ${LOGS_PATH}:/app/logs
+
+  user:
+    build:
+      context: ../../user
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+    image: target/user-web:${APP_VERSION}
+    restart: unless-stopped
+    ports:
+      - "${USER_HOST_PORT}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  admin:
+    build:
+      context: ../../admin
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_ADMIN_PATH: ${VITE_ADMIN_PATH}
+    image: target/admin-web:${APP_VERSION}
+    restart: unless-stopped
+    ports:
+      - "${ADMIN_HOST_PORT}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

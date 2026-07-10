@@ -34,3 +34,13 @@ It checks release mode, default secrets, CORS wildcard origins, `X-Lang`,
 HTTP server limits, `site_config.currency: USD`, final HTTPS `site_url`,
 frontend `VITE_API_BASE_URL`, frontend secret-like env names, and public
 frontend wording that may expose provider/API/procurement internals.
+
+## Compose Template
+
+Separated deployment scaffolding lives in `ops/compose/`:
+
+- `docker-compose.production.yml`
+- `.env.production.example`
+
+Copy `.env.production.example` outside the repository before adding real
+secrets, then run Compose with `--env-file /secure/path/target.env`.

@@ -246,3 +246,42 @@ bash ops/prelaunch-audit.sh \
 Deployment is blocked unless the audit reports `0` failures.
 
 After deployment, continue with `docs/20-go-live-runbook.md`.
+
+## Compose Template
+
+A minimal separated deployment Compose template is available at:
+
+- `ops/compose/docker-compose.production.yml`
+- `ops/compose/.env.production.example`
+
+Use it as a structure reference, not as a complete secret-management solution.
+Copy `.env.production.example` outside git-tracked paths before filling real
+values.
+
+Example:
+
+```bash
+cd ops/compose
+cp .env.production.example /secure/path/target.env
+docker compose \
+  --env-file /secure/path/target.env \
+  -f docker-compose.production.yml \
+  build
+docker compose \
+  --env-file /secure/path/target.env \
+  -f docker-compose.production.yml \
+  up -d
+```
+
+Before running `up`, provide `/secure/path/config.yml` or update
+`DUJIAO_CONFIG_PATH` to point at the production backend config generated from
+`docs/19-production-config-template.md`.
+
+Validate the rendered Compose file in an environment with Docker installed:
+
+```bash
+docker compose \
+  --env-file /secure/path/target.env \
+  -f docker-compose.production.yml \
+  config
+```
