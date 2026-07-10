@@ -298,8 +298,10 @@ Remaining implementation:
 ## Phase 7: Language, SEO, And Branding
 
 Status: default first-visit locale, locale-prefixed public routes,
-`hreflang`, and locale sitemap URLs completed on 2026-07-10. Details are
-recorded in `docs/16-language-seo-branding-readiness.md`.
+`hreflang`, locale sitemap URLs, and production branding checklist completed
+on 2026-07-10. Details are recorded in
+`docs/16-language-seo-branding-readiness.md` and
+`docs/17-production-domain-branding-checklist.md`.
 
 Goal: prepare public launch surface.
 
@@ -333,6 +335,8 @@ Completed verification:
   render with the expected locale and `hreflang` metadata.
 - Existing branding and SEO config surfaces were confirmed for launch asset
   replacement.
+- Production domain and branding replacement checklist is documented in
+  `docs/17-production-domain-branding-checklist.md`.
 - Targeted checks passed:
   - `go test ./internal/http/handlers/public -run 'Test(LocaleFromCountryCode|ResolvePublicDefaultLocale)'`
   - `cd user && ./node_modules/.bin/vue-tsc -b`
@@ -341,6 +345,6 @@ Completed verification:
 
 Remaining implementation:
 
-- Finalize primary domain, placeholder text replacement, and production
-  favicon/logo/OG assets.
+- Execute the production domain and branding checklist after the final domain
+  is selected.
 - Repeat browser smoke on the final production domain before launch.

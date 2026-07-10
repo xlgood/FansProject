@@ -53,8 +53,9 @@ recording the remaining launch-surface work.
 
 ## Remaining
 
-- Decide the final primary domain and placeholder domain text replacement plan.
-- Add production favicon/logo/OG image assets per domain once domains are known.
+- Execute the production domain and branding checklist in
+  `docs/17-production-domain-branding-checklist.md` once the final domain is
+  known.
 - Re-run browser smoke on locale-prefixed URLs before production launch.
 
 ## Verification
