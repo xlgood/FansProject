@@ -185,6 +185,14 @@ Pass criteria:
 - backend config mounts `/etc/target-site/config.yml`;
 - persistent paths point at `/var/lib/target-site/...` or approved alternatives.
 
+You can run the combined runtime dry-run from `/srv/target-site/FansProject`:
+
+```bash
+bash ops/check-runtime-dry-run.sh /etc/target-site
+```
+
+The script does not start services and does not print secret values.
+
 ## Build And Start
 
 Build:

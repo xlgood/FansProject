@@ -72,10 +72,23 @@ Pass criteria:
 Do not continue to build, payment testing, or live provider testing while this
 gate has any `FAIL`.
 
-## Gate 2: Automated Tests And Builds
+## Gate 2: Runtime Dry-Run, Automated Tests, And Builds
 
 Build and runtime topology must follow `docs/21-production-deployment-plan.md`
 unless operations explicitly approves a different deployment model.
+
+Run runtime dry-run before build/up:
+
+```bash
+bash ops/check-runtime-dry-run.sh /path/to/production-config-dir
+```
+
+Pass criteria:
+
+- no `FAIL` output;
+- Compose render exits `0` when Docker Compose is available;
+- API/user/admin host ports bind to loopback;
+- Nginx draft files have no launch placeholders.
 
 Run backend tests:
 

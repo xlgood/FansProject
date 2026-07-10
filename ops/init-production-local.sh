@@ -16,12 +16,15 @@ copy_if_missing() {
 }
 
 mkdir -p "$target_dir"
+mkdir -p "$target_dir/nginx"
 
 copy_if_missing "ops/compose/.env.production.example" "$target_dir/compose.env"
 copy_if_missing "ops/compose/config.yml.production.example" "$target_dir/config.yml"
 copy_if_missing "ops/gate1/site_config.json.example" "$target_dir/site_config.json"
 copy_if_missing "ops/gate1/user.env.production.example" "$target_dir/user.env.production"
 copy_if_missing "ops/gate1/admin.env.production.example" "$target_dir/admin.env.production"
+copy_if_missing "ops/nginx/target-site.conf.example" "$target_dir/nginx/target-site.conf"
+copy_if_missing "ops/nginx/target-proxy-headers.conf.example" "$target_dir/nginx/target-proxy-headers.conf"
 
 readme="$target_dir/README.md"
 if [ ! -e "$readme" ]; then
@@ -38,6 +41,8 @@ Files:
 - `site_config.json`: exported/importable site config for Gate 1 audit.
 - `user.env.production`: user frontend build env.
 - `admin.env.production`: admin frontend build env.
+- `nginx/target-site.conf`: Nginx reverse proxy config draft.
+- `nginx/target-proxy-headers.conf`: Nginx proxy headers draft.
 
 Do not commit real secrets. Replace every `CHANGE_ME` and `FINAL_*` placeholder
 before running Gate 1.
@@ -50,6 +55,12 @@ bash ops/prelaunch-audit.sh \
   --site-config deploy/production-local/site_config.json \
   --user-env deploy/production-local/user.env.production \
   --admin-env deploy/production-local/admin.env.production
+```
+
+Then run the runtime dry-run:
+
+```bash
+bash ops/check-runtime-dry-run.sh deploy/production-local
 ```
 README
   printf 'COPY %s\n' "$readme"

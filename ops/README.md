@@ -69,6 +69,25 @@ secrets. Copy `config.yml.production.example` outside the repository before
 adding backend secrets, then run Compose with
 `--env-file /secure/path/target.env`.
 
+## Runtime Dry-Run
+
+After Gate 1 passes and before build/up, run:
+
+```bash
+bash ops/check-runtime-dry-run.sh /path/to/production-config-dir
+```
+
+The config directory must contain:
+
+- `compose.env`
+- `config.yml`
+- `nginx/target-site.conf`
+- `nginx/target-proxy-headers.conf`
+
+The script checks loopback port bindings, deployment paths, remaining
+placeholders, Compose rendering, and the Nginx proxy config shape. It does not
+start services, reload Nginx, or print secret values.
+
 ## Operations Runbook
 
 Production operations procedures are documented in

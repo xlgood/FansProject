@@ -57,6 +57,7 @@
 - `ops/init-production-local.sh`：复制生产配置模板到本地忽略目录 `deploy/production-local/`。
 - `ops/check-production-local.sh`：检查本地生产配置草稿并执行 Gate 1 审计。
 - `ops/bootstrap-production-host.sh`：生产或 staging 主机目录、仓库和配置模板初始化脚本。
+- `ops/check-runtime-dry-run.sh`：检查生产 Compose 与 Nginx 草稿配置是否可进入构建/启动阶段。
 - `ops/compose/docker-compose.production.yml`：最小三服务分离部署 Compose 模板。
 - `ops/gate1/`：Gate 1 审计输入模板，含 `site_config` 和前后台生产 env 示例。
 
