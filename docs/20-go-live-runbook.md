@@ -31,6 +31,7 @@ gates:
 - Final acceptance checklist from `docs/25-launch-acceptance-checklist.md`.
 - Gate 1 production config workbook from
   `docs/27-gate1-production-config-workbook.md`.
+- Payment launch workbook from `docs/30-payment-launch-workbook.md`.
 
 Input templates:
 
@@ -160,6 +161,9 @@ Pass criteria:
 - Favicon, logo, and OG image return HTTP `200`.
 
 ## Gate 4: Payment Verification
+
+Prepare channel configuration and evidence using
+`docs/30-payment-launch-workbook.md`.
 
 For each enabled payment channel:
 

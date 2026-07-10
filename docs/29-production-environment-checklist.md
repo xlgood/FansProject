@@ -274,6 +274,13 @@ Expected:
 - public config shows the final brand and `currency: "USD"`;
 - no public response exposes provider credentials or internal wording.
 
+## Payment Readiness
+
+Before enabling live payment channels, complete
+`docs/30-payment-launch-workbook.md` for Alipay, WeChat Pay, and PayPal. Keep
+channels disabled until callback/webhook URLs, signature verification, amount
+currency reconciliation, and log redaction have been accepted.
+
 ## Blockers
 
 Do not continue to payment or provider acceptance if any of these are true:

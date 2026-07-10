@@ -54,6 +54,7 @@
 - `docs/27-gate1-production-config-workbook.md`：Gate 1 真实生产配置准备工作单。
 - `docs/28-secret-generation-guide.md`：生产密钥生成、填写和轮换说明。
 - `docs/29-production-environment-checklist.md`：生产或 staging 主机环境准备清单。
+- `docs/30-payment-launch-workbook.md`：支付宝、微信支付、PayPal 上线配置和验收工作单。
 - `ops/init-production-local.sh`：复制生产配置模板到本地忽略目录 `deploy/production-local/`。
 - `ops/check-production-local.sh`：检查本地生产配置草稿并执行 Gate 1 审计。
 - `ops/bootstrap-production-host.sh`：生产或 staging 主机目录、仓库和配置模板初始化脚本。

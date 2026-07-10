@@ -52,6 +52,8 @@ Evidence to attach:
 
 ## Payment Acceptance
 
+Use `docs/30-payment-launch-workbook.md` to record per-channel evidence.
+
 Test each enabled payment channel:
 
 - Alipay
