@@ -49,15 +49,15 @@ These must be completed before any public production launch:
   - manual operator workflows
 - Verify Telegram SKUs remain excluded from public catalog and sitemap.
 - Verify non-intersection platforms are not published.
-- Add explicit Go `http.Server` production timeouts before direct internet
+- Review configured Go `http.Server` production limits before direct internet
   exposure:
   - `ReadHeaderTimeout`
   - `ReadTimeout`
   - `WriteTimeout`
   - `IdleTimeout`
   - `MaxHeaderBytes`
-  If these are enforced only at a reverse proxy, document the proxy config and
-  keep app-level timeouts as the preferred follow-up.
+  The application now exposes these under `server.*` in `config.yml`; keep
+  non-zero values in production and document any stricter reverse-proxy limits.
 
 ## Secrets And Configuration
 

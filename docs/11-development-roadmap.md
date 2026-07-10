@@ -351,8 +351,9 @@ Remaining implementation:
 
 ## Phase 8: Production Security And Compliance
 
-Status: launch security checklist documented on 2026-07-10. Details are
-recorded in `docs/18-production-security-compliance-checklist.md`.
+Status: launch security checklist documented and app-level HTTP server timeout
+configuration added on 2026-07-10. Details are recorded in
+`docs/18-production-security-compliance-checklist.md`.
 
 Goal: make production launch blockers explicit before live traffic or payments.
 
@@ -365,8 +366,8 @@ Tasks:
 - Verify public copy does not expose upstream/API/procurement details.
 - Confirm admin 2FA, RBAC, and rate limiting.
 - Confirm browser security headers at CDN/reverse proxy.
-- Add app-level HTTP server timeouts or document equivalent reverse-proxy
-  controls before direct internet exposure.
+- Add app-level HTTP server timeouts and request header size limits before
+  direct internet exposure.
 
 Success criteria:
 
@@ -375,3 +376,13 @@ Success criteria:
 - Final domain runtime smoke passes.
 - Public users cannot see Telegram SKUs, non-intersection platforms, or
   internal fulfillment wording.
+
+Completed verification:
+
+- Backend `http.Server` now applies configurable `ReadHeaderTimeout`,
+  `ReadTimeout`, `WriteTimeout`, `IdleTimeout`, and `MaxHeaderBytes` from
+  `server.*` config.
+- Default config values are present in `dujiao-next/config.yml` and Viper
+  defaults.
+- Targeted tests passed:
+  - `cd dujiao-next && GOCACHE=/Users/river/FansProject/dujiao-next/.gocache GOMODCACHE=/Users/river/FansProject/dujiao-next/.gomodcache go test ./internal/app ./internal/config`
