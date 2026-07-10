@@ -352,14 +352,14 @@ Remaining implementation:
 ## Phase 8: Production Security And Compliance
 
 Status: launch security checklist, production config template, production
-config mapping, Gate 1 input templates, reverse proxy/CDN template, go-live
-runbook, production deployment plan, and app-level HTTP server timeout
-configuration added on 2026-07-10.
+config mapping, Gate 1 input templates, reverse proxy/CDN template, operations
+runbook, go-live runbook, production deployment plan, and app-level HTTP server
+timeout configuration added on 2026-07-10.
 Details are recorded in `docs/18-production-security-compliance-checklist.md`,
 `docs/19-production-config-template.md`, `docs/20-go-live-runbook.md`,
 `docs/21-production-deployment-plan.md`, and
 `docs/22-production-config-mapping.md`,
-`docs/23-reverse-proxy-cdn.md`.
+`docs/23-reverse-proxy-cdn.md`, and `docs/24-operations-runbook.md`.
 
 Goal: make production launch blockers explicit before live traffic or payments.
 
@@ -388,6 +388,8 @@ Tasks:
   frontend env.
 - Add reverse proxy/CDN templates for separated storefront, admin, and API
   routing.
+- Add production operations runbook for deploy, health checks, logs, rollback,
+  and incident response.
 
 Success criteria:
 
@@ -419,5 +421,7 @@ Completed verification:
   files.
 - Reverse proxy/CDN guidance and Nginx examples are documented in
   `docs/23-reverse-proxy-cdn.md` and `ops/nginx/`.
+- Production operations procedures are documented in
+  `docs/24-operations-runbook.md`.
 - Targeted tests passed:
   - `cd dujiao-next && GOCACHE=/Users/river/FansProject/dujiao-next/.gocache GOMODCACHE=/Users/river/FansProject/dujiao-next/.gomodcache go test ./internal/app ./internal/config`

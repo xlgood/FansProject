@@ -27,6 +27,7 @@ gates:
   `docs/21-production-deployment-plan.md`.
 - Production config mapping from `docs/22-production-config-mapping.md`.
 - Reverse proxy/CDN plan from `docs/23-reverse-proxy-cdn.md`.
+- Operations runbook from `docs/24-operations-runbook.md`.
 
 Input templates:
 
@@ -191,6 +192,7 @@ Launch can proceed only when:
   - stop queue workers;
   - rotate provider/payment/JWT/SMTP secrets;
   - roll back frontend and backend versions.
+  Operational procedures are documented in `docs/24-operations-runbook.md`.
 
 ## Post-Launch
 

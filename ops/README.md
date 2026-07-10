@@ -68,3 +68,9 @@ Copy `.env.production.example` outside the repository before adding real
 secrets. Copy `config.yml.production.example` outside the repository before
 adding backend secrets, then run Compose with
 `--env-file /secure/path/target.env`.
+
+## Operations Runbook
+
+Production operations procedures are documented in
+`docs/24-operations-runbook.md`, including start, stop, restart, logs, health
+checks, payment/provider disablement, rollback, and incident priorities.
