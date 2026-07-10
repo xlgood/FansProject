@@ -54,6 +54,7 @@
 - `docs/27-gate1-production-config-workbook.md`：Gate 1 真实生产配置准备工作单。
 - `docs/28-secret-generation-guide.md`：生产密钥生成、填写和轮换说明。
 - `ops/init-production-local.sh`：复制生产配置模板到本地忽略目录 `deploy/production-local/`。
+- `ops/check-production-local.sh`：检查本地生产配置草稿并执行 Gate 1 审计。
 - `ops/compose/docker-compose.production.yml`：最小三服务分离部署 Compose 模板。
 - `ops/gate1/`：Gate 1 审计输入模板，含 `site_config` 和前后台生产 env 示例。
 

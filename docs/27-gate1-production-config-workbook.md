@@ -141,6 +141,7 @@ Pass criteria:
 Before building production images:
 
 ```bash
+bash ops/check-production-local.sh
 jq . /secure/target/site_config.json
 bash -n ops/prelaunch-audit.sh
 bash ops/prelaunch-audit.sh \
