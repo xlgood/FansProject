@@ -351,9 +351,10 @@ Remaining implementation:
 
 ## Phase 8: Production Security And Compliance
 
-Status: launch security checklist documented and app-level HTTP server timeout
-configuration added on 2026-07-10. Details are recorded in
-`docs/18-production-security-compliance-checklist.md`.
+Status: launch security checklist, production config template, and app-level
+HTTP server timeout configuration added on 2026-07-10. Details are recorded in
+`docs/18-production-security-compliance-checklist.md` and
+`docs/19-production-config-template.md`.
 
 Goal: make production launch blockers explicit before live traffic or payments.
 
@@ -368,6 +369,9 @@ Tasks:
 - Confirm browser security headers at CDN/reverse proxy.
 - Add app-level HTTP server timeouts and request header size limits before
   direct internet exposure.
+- Document production config placeholders for release mode, CORS, final
+  domains, payment callbacks, Redis/queue, secrets, USD site currency, and
+  provider operating switches.
 
 Success criteria:
 
@@ -384,5 +388,7 @@ Completed verification:
   `server.*` config.
 - Default config values are present in `dujiao-next/config.yml` and Viper
   defaults.
+- Production configuration template is documented in
+  `docs/19-production-config-template.md`.
 - Targeted tests passed:
   - `cd dujiao-next && GOCACHE=/Users/river/FansProject/dujiao-next/.gocache GOMODCACHE=/Users/river/FansProject/dujiao-next/.gomodcache go test ./internal/app ./internal/config`

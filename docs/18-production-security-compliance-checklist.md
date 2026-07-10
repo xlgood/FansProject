@@ -2,6 +2,9 @@
 
 Date: 2026-07-10
 
+Related production configuration worksheet:
+`docs/19-production-config-template.md`.
+
 ## Purpose
 
 Block production launch until secrets, public wording, payment callbacks,
@@ -32,6 +35,9 @@ These must be completed before any public production launch:
   - payment return URLs
   - payment callback/webhook URLs
   - Telegram OIDC callback only if Telegram login remains enabled
+- Configure target site currency:
+  - `site_config.currency: USD`
+  - payment-channel exchange settings where a gateway requires non-USD
 - Do not deploy frontend dev servers:
   - do not expose `vite`
   - do not expose `vite preview`
@@ -130,6 +136,11 @@ Required checks:
 
 - Alipay, WeChat Pay, and PayPal channels are configured only with production or
   explicitly selected sandbox credentials.
+- Public prices and local settlement use USD unless finance explicitly changes
+  the launch decision.
+- If Alipay or WeChat Pay requires CNY, configure channel exchange settings and
+  verify callback amount/currency matching with a sandbox or low-value live
+  payment.
 - Callback URLs use final HTTPS domains.
 - Webhook signature verification is enabled for every provider that supports it.
 - Payment return URLs do not use localhost/staging.
