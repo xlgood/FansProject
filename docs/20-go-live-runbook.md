@@ -23,6 +23,8 @@ gates:
 - Final storefront, admin, and API domains.
 - Production or explicitly selected sandbox payment credentials.
 - Production provider credentials.
+- Deployment topology and image/process plan from
+  `docs/21-production-deployment-plan.md`.
 
 Do not commit these files when they contain real secrets.
 
@@ -54,6 +56,9 @@ Do not continue to build, payment testing, or live provider testing while this
 gate has any `FAIL`.
 
 ## Gate 2: Automated Tests And Builds
+
+Build and runtime topology must follow `docs/21-production-deployment-plan.md`
+unless operations explicitly approves a different deployment model.
 
 Run backend tests:
 

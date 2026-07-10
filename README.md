@@ -45,6 +45,7 @@
 - `docs/18-production-security-compliance-checklist.md`：生产安全与合规上线阻断清单。
 - `docs/19-production-config-template.md`：生产配置模板，含域名、支付、CORS、Redis、队列和密钥占位。
 - `docs/20-go-live-runbook.md`：最终上线 gate 顺序，要求先跑 `ops/prelaunch-audit.sh`。
+- `docs/21-production-deployment-plan.md`：生产部署拓扑、构建方式、反代路由和 fullstack 备选说明。
 
 ## 信息来源
 
