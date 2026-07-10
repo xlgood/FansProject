@@ -79,6 +79,19 @@ The exact paths can change, but keep secrets and data outside git checkouts.
 
 ## Clone Or Update Repositories
 
+For first-time host setup, the bootstrap script can create directories,
+clone/update the four repositories, and install template files when missing:
+
+```bash
+BASE_DIR=/srv/target-site \
+CONFIG_DIR=/etc/target-site \
+DATA_DIR=/var/lib/target-site \
+bash ops/bootstrap-production-host.sh
+```
+
+The script does not overwrite existing config files and does not start
+services. Review its output before continuing.
+
 First-time clone:
 
 ```bash
