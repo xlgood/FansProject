@@ -32,6 +32,8 @@ gates:
 - Gate 1 production config workbook from
   `docs/27-gate1-production-config-workbook.md`.
 - Payment launch workbook from `docs/30-payment-launch-workbook.md`.
+- Production data initialization checklist from
+  `docs/31-production-data-initialization.md`.
 
 Input templates:
 
@@ -123,6 +125,9 @@ Pass criteria:
 - No frontend bundle contains provider, payment, SMTP, JWT, or admin secrets.
 
 ## Gate 3: Domain And Runtime Smoke
+
+Before public runtime smoke, complete the first-boot and data initialization
+steps in `docs/31-production-data-initialization.md`.
 
 Run after deployment to the final domain:
 

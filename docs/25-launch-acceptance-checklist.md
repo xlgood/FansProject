@@ -22,6 +22,7 @@ Use this table for the final launch record:
 | --- | --- | --- | --- | --- |
 | Gate 1 audit |  |  |  |  |
 | Tests and builds |  |  |  |  |
+| Data initialization |  |  |  |  |
 | Runtime smoke |  |  |  |  |
 | Payment acceptance |  |  |  |  |
 | Provider acceptance |  |  |  |  |
@@ -42,6 +43,8 @@ Required:
 - CORS check allows final origins and rejects unknown origins.
 - Nginx config validates with `nginx -t`.
 - Compose config renders with `docker compose config`.
+- Production data initialization from
+  `docs/31-production-data-initialization.md` is complete.
 
 Evidence to attach:
 
