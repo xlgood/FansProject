@@ -24,6 +24,19 @@ recording the remaining launch-surface work.
 - User frontend applies `default_locale` only when the visitor has not already
   selected and saved a language manually.
 - Manual language override continues to use `localStorage.locale`.
+- User frontend now supports locale-prefixed public routes:
+  - `/zh-CN`
+  - `/zh-TW`
+  - `/en`
+- Locale-prefixed variants are also available for public child pages such as
+  products, categories, product detail, blog, notice, and static content pages.
+- Visiting a locale-prefixed route updates the active frontend locale.
+- Page SEO now emits canonical links plus `hreflang` alternates for `zh-CN`,
+  `zh-TW`, `en`, and `x-default`.
+- Canonical URLs stay unprefixed so the current primary URL structure remains
+  stable.
+- Sitemap generation now includes unprefixed and locale-prefixed variants for
+  public static pages, categories, products, and posts.
 
 ## Existing Capabilities Confirmed
 
@@ -40,11 +53,9 @@ recording the remaining launch-surface work.
 
 ## Remaining
 
-- Add locale-prefixed public routes such as `/zh-CN`, `/zh-TW`, and `/en`.
-- Add canonical and `hreflang` metadata for locale variants.
 - Decide the final primary domain and placeholder domain text replacement plan.
 - Add production favicon/logo/OG image assets per domain once domains are known.
-- Re-run browser smoke after locale-prefixed routing is implemented.
+- Re-run browser smoke on locale-prefixed URLs before production launch.
 
 ## Verification
 
@@ -54,4 +65,8 @@ GOMODCACHE=/Users/river/FansProject/dujiao-next/.gomodcache \
 go test ./internal/http/handlers/public -run 'Test(LocaleFromCountryCode|ResolvePublicDefaultLocale)'
 
 cd user && ./node_modules/.bin/vue-tsc -b
+
+GOCACHE=/Users/river/FansProject/dujiao-next/.gocache \
+GOMODCACHE=/Users/river/FansProject/dujiao-next/.gomodcache \
+go test ./internal/service -run TestSitemapService
 ```

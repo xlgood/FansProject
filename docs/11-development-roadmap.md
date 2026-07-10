@@ -297,7 +297,8 @@ Remaining implementation:
 
 ## Phase 7: Language, SEO, And Branding
 
-Status: default first-visit locale completed on 2026-07-10. Details are
+Status: default first-visit locale, locale-prefixed public routes,
+`hreflang`, and locale sitemap URLs completed on 2026-07-10. Details are
 recorded in `docs/16-language-seo-branding-readiness.md`.
 
 Goal: prepare public launch surface.
@@ -322,12 +323,21 @@ Completed verification:
   `Accept-Language`.
 - User frontend applies server default locale only when no manual language
   override exists.
+- User frontend supports locale-prefixed public routes for `zh-CN`, `zh-TW`,
+  and `en`.
+- Public pages emit canonical links plus `hreflang` alternates for `zh-CN`,
+  `zh-TW`, `en`, and `x-default`.
+- Backend sitemap generation includes unprefixed and locale-prefixed variants
+  for public static pages, categories, products, and posts.
 - Existing branding and SEO config surfaces were confirmed for launch asset
   replacement.
 - Targeted checks passed:
   - `go test ./internal/http/handlers/public -run 'Test(LocaleFromCountryCode|ResolvePublicDefaultLocale)'`
   - `cd user && ./node_modules/.bin/vue-tsc -b`
+  - `go test ./internal/service -run TestSitemapService`
 
 Remaining implementation:
 
-- Add locale-prefixed public routes and `hreflang` metadata.
+- Finalize primary domain, placeholder text replacement, and production
+  favicon/logo/OG assets.
+- Run browser smoke on locale-prefixed URLs before production launch.

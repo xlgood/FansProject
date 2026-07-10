@@ -1,0 +1,117 @@
+diff --git a/internal/service/sitemap_service.go b/internal/service/sitemap_service.go
+index a15d5be..94686e2 100644
+--- a/internal/service/sitemap_service.go
++++ b/internal/service/sitemap_service.go
+@@ -38,6 +38,8 @@ const (
+ 	sitemapMaxFetch    = 50000 // 单次拉取上限，避免极端数据量打爆内存
+ )
+ 
++var sitemapLocalePrefixes = []string{"zh-CN", "zh-TW", "en"}
++
+ // Generate 生成 sitemap.xml 内容；baseURL 必须是不带尾斜杠的站点根（如 https://example.com）
+ func (s *SitemapService) Generate(ctx context.Context, baseURL string) (string, error) {
+ 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+@@ -122,12 +124,12 @@ func (s *SitemapService) collectURLs(baseURL string) ([]urlEntry, error) {
+ 		{"/privacy", "yearly", "0.2"},
+ 	}
+ 	for _, p := range staticPages {
+-		entries = append(entries, urlEntry{
++		entries = appendLocalizedSitemapEntries(entries, urlEntry{
+ 			Loc:        baseURL + p.Path,
+ 			LastMod:    now,
+ 			ChangeFreq: p.ChangeFreq,
+ 			Priority:   p.Priority,
+-		})
++		}, baseURL)
+ 	}
+ 
+ 	// 2. 启用的分类
+@@ -136,12 +138,12 @@ func (s *SitemapService) collectURLs(baseURL string) ([]urlEntry, error) {
+ 		return nil, fmt.Errorf("sitemap: list categories: %w", err)
+ 	}
+ 	for _, cat := range categories {
+-		entries = append(entries, urlEntry{
++		entries = appendLocalizedSitemapEntries(entries, urlEntry{
+ 			Loc:        baseURL + "/categories/" + url.PathEscape(cat.Slug),
+ 			LastMod:    cat.CreatedAt.UTC().Format("2006-01-02"),
+ 			ChangeFreq: "weekly",
+ 			Priority:   "0.7",
+-		})
++		}, baseURL)
+ 	}
+ 
+ 	// 3. 上架的商品（OnlyActive 已含分类启用过滤）
+@@ -154,12 +156,12 @@ func (s *SitemapService) collectURLs(baseURL string) ([]urlEntry, error) {
+ 		return nil, fmt.Errorf("sitemap: list products: %w", err)
+ 	}
+ 	for _, p := range products {
+-		entries = append(entries, urlEntry{
++		entries = appendLocalizedSitemapEntries(entries, urlEntry{
+ 			Loc:        baseURL + "/products/" + url.PathEscape(p.Slug),
+ 			LastMod:    p.UpdatedAt.UTC().Format("2006-01-02"),
+ 			ChangeFreq: "daily",
+ 			Priority:   "0.8",
+-		})
++		}, baseURL)
+ 	}
+ 
+ 	// 4. 已发布的博客 / 公告
+@@ -178,17 +180,35 @@ func (s *SitemapService) collectURLs(baseURL string) ([]urlEntry, error) {
+ 			lastmod = *post.PublishedAt
+ 		}
+ 		// blog 与 notice 共用 /blog/:slug 详情页（user 前台 Notice.vue 跳转到 /blog/{slug}）
+-		entries = append(entries, urlEntry{
++		entries = appendLocalizedSitemapEntries(entries, urlEntry{
+ 			Loc:        baseURL + "/blog/" + url.PathEscape(post.Slug),
+ 			LastMod:    lastmod.UTC().Format("2006-01-02"),
+ 			ChangeFreq: "monthly",
+ 			Priority:   "0.5",
+-		})
++		}, baseURL)
+ 	}
+ 
+ 	return entries, nil
+ }
+ 
++func appendLocalizedSitemapEntries(entries []urlEntry, entry urlEntry, baseURL string) []urlEntry {
++	entries = append(entries, entry)
++	path := strings.TrimPrefix(entry.Loc, baseURL)
++	if path == "" {
++		path = "/"
++	}
++	for _, prefix := range sitemapLocalePrefixes {
++		localized := entry
++		if path == "/" {
++			localized.Loc = baseURL + "/" + prefix
++		} else {
++			localized.Loc = baseURL + "/" + prefix + path
++		}
++		entries = append(entries, localized)
++	}
++	return entries
++}
++
+ func renderSitemapXML(entries []urlEntry) (string, error) {
+ 	set := urlSet{
+ 		Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9",
+diff --git a/internal/service/sitemap_service_test.go b/internal/service/sitemap_service_test.go
+index 92f8e39..e5b6e73 100644
+--- a/internal/service/sitemap_service_test.go
++++ b/internal/service/sitemap_service_test.go
+@@ -124,10 +124,16 @@ func TestSitemapServiceIncludesActiveContent(t *testing.T) {
+ 		"<urlset",
+ 		"https://example.com/",
+ 		"https://example.com/products",
++		"https://example.com/zh-CN/products",
++		"https://example.com/zh-TW/products",
++		"https://example.com/en/products",
+ 		"https://example.com/blog",
+ 		"https://example.com/categories/games",
++		"https://example.com/en/categories/games",
+ 		"https://example.com/products/visible-product",
++		"https://example.com/zh-CN/products/visible-product",
+ 		"https://example.com/blog/hello",
++		"https://example.com/zh-TW/blog/hello",
+ 	}
+ 	for _, s := range mustContain {
+ 		if !strings.Contains(xmlStr, s) {

@@ -1,0 +1,699 @@
+diff --git a/src/composables/usePageSeo.ts b/src/composables/usePageSeo.ts
+index 7209639..540727a 100644
+--- a/src/composables/usePageSeo.ts
++++ b/src/composables/usePageSeo.ts
+@@ -2,6 +2,7 @@ import { computed } from 'vue'
+ import { useHead } from '@unhead/vue'
+ import { useAppStore } from '../stores/app'
+ import { getImageUrl } from '../utils/image'
++import { localePathPrefixes } from '../utils/localeRoutes'
+ 
+ export interface PageSeoOptions {
+   /** 页面专属标题；若与站点名相同，仅展示站点名 */
+@@ -20,6 +21,21 @@ export interface PageSeoOptions {
+ 
+ const trimSlashEnd = (s: string) => s.replace(/\/+$/, '')
+ 
++const localeAlternates = [
++  { locale: 'zh-CN', hreflang: 'zh-CN', prefix: 'zh-CN' },
++  { locale: 'zh-TW', hreflang: 'zh-TW', prefix: 'zh-TW' },
++  { locale: 'en-US', hreflang: 'en', prefix: 'en' },
++]
++
++const stripLocalePrefix = (path: string): string => {
++  const normalized = path.startsWith('/') ? path : `/${path}`
++  for (const prefix of localePathPrefixes) {
++    if (normalized === `/${prefix}`) return '/'
++    if (normalized.startsWith(`/${prefix}/`)) return normalized.slice(prefix.length + 1) || '/'
++  }
++  return normalized
++}
++
+ const resolveImage = (raw: string, baseUrl: string): string => {
+   const trimmed = raw.trim()
+   if (!trimmed) return ''
+@@ -85,10 +101,28 @@ export function usePageSeo(options: PageSeoOptions = {}) {
+     if (!path && typeof window !== 'undefined') path = window.location.pathname
+     if (!path) path = '/'
+     if (!path.startsWith('/')) path = '/' + path
++    path = stripLocalePrefix(path)
+     if (!baseUrl.value) return path
+     return baseUrl.value + path
+   })
+ 
++  const alternateLinks = computed(() => {
++    let path = options.canonicalPath?.()
++    if (!path && typeof window !== 'undefined') path = window.location.pathname
++    path = stripLocalePrefix(String(path || '/').trim() || '/')
++    if (!path.startsWith('/')) path = '/' + path
++    const base = baseUrl.value
++    if (!base) return []
++    const links = localeAlternates.map((item) => ({
++      key: `alternate-${item.locale}`,
++      rel: 'alternate',
++      hreflang: item.hreflang,
++      href: `${base}/${item.prefix}${path === '/' ? '' : path}`,
++    }))
++    links.push({ key: 'alternate-x-default', rel: 'alternate', hreflang: 'x-default', href: `${base}${path}` })
++    return links
++  })
++
+   const fullImage = computed(() => {
+     const raw = options.image?.()
+     if (raw && String(raw).trim()) {
+@@ -103,8 +137,8 @@ export function usePageSeo(options: PageSeoOptions = {}) {
+   useHead({
+     title: () => fullTitle.value,
+     link: () => {
+-      if (!fullCanonical.value) return []
+-      return [{ key: 'canonical', rel: 'canonical', href: fullCanonical.value }]
++      if (!fullCanonical.value) return alternateLinks.value
++      return [{ key: 'canonical', rel: 'canonical', href: fullCanonical.value }, ...alternateLinks.value]
+     },
+     meta: () => {
+       const tags: Array<{ name?: string; property?: string; content: string }> = []
+diff --git a/src/router/index.ts b/src/router/index.ts
+index 33af2c3..41f72c6 100644
+--- a/src/router/index.ts
++++ b/src/router/index.ts
+@@ -4,8 +4,11 @@ import { useAppStore } from '../stores/app'
+ import { useTelegramMiniAppStore } from '../stores/telegramMiniApp'
+ import { captureAffiliateFromRoute } from '../utils/affiliate'
+ import { templateView } from '../templates/registry'
++import i18n, { isSupportedLocale } from '../i18n'
++import { localePathPrefixes, pathLocaleMap } from '../utils/localeRoutes'
+ 
+ type RouteComponentLoader = () => Promise<unknown>
++type AppRoute = NonNullable<Parameters<typeof createRouter>[0]['routes']>[number]
+ 
+ const homeViewLoader: RouteComponentLoader = () => import('../views/Home.vue')
+ const productsViewLoader: RouteComponentLoader = () => import('../views/Products.vue')
+@@ -99,6 +102,259 @@ export const warmupCommonRoutes = () => {
+     window.addEventListener('load', startWarmup, { once: true })
+ }
+ 
++const localePrefixPattern = localePathPrefixes.join('|')
++
++const getRouteLocale = (params: unknown): string => {
++    const raw = typeof params === 'string' ? params : Array.isArray(params) ? params[0] : ''
++    return pathLocaleMap[String(raw || '').trim()] || ''
++}
++
++const publicLocaleRouteNames = new Set([
++    'home',
++    'products',
++    'category-products',
++    'product-detail',
++    'blog',
++    'blog-detail',
++    'notice',
++    'about',
++    'terms',
++    'privacy',
++])
++
++const withLocaleRoutes = (routes: AppRoute[]): AppRoute[] => {
++    const localized = routes
++        .filter((route) => route.name && publicLocaleRouteNames.has(String(route.name)))
++        .map((route) => ({
++            ...route,
++            path: `/:locale(${localePrefixPattern})${route.path === '/' ? '' : route.path}`,
++            name: `${String(route.name)}-locale`,
++            alias: undefined,
++            meta: {
++                ...(route.meta || {}),
++                localeRoute: true,
++                baseRouteName: route.name,
++            },
++        }))
++
++    const catchAllIndex = routes.findIndex((route) => String(route.path || '').includes(':pathMatch'))
++    if (catchAllIndex < 0) return [...routes, ...localized]
++    return [
++        ...routes.slice(0, catchAllIndex),
++        ...localized,
++        ...routes.slice(catchAllIndex),
++    ]
++}
++
++const baseRoutes: AppRoute[] = [
++    {
++        path: '/',
++        name: 'home',
++        component: templateView('Home', homeViewLoader),
++    },
++    {
++        path: '/products',
++        name: 'products',
++        component: () => {
++            const appStore = useAppStore()
++            return appStore.config?.template_mode === 'list'
++                ? templateView('Home', homeViewLoader)()
++                : templateView('Products', productsViewLoader)()
++        },
++    },
++    {
++        path: '/categories/:slug',
++        name: 'category-products',
++        component: () => {
++            const appStore = useAppStore()
++            return appStore.config?.template_mode === 'list'
++                ? templateView('Home', homeViewLoader)()
++                : templateView('Products', productsViewLoader)()
++        },
++    },
++    {
++        path: '/products/:slug',
++        name: 'product-detail',
++        component: templateView('ProductDetail', productDetailViewLoader),
++    },
++    {
++        path: '/cart',
++        name: 'cart',
++        component: templateView('Cart', cartViewLoader),
++    },
++    {
++        path: '/checkout',
++        name: 'checkout',
++        component: templateView('Checkout', checkoutViewLoader),
++    },
++    {
++        path: '/pay',
++        name: 'payment',
++        component: templateView('Payment', paymentViewLoader),
++    },
++    {
++        path: '/me',
++        name: 'personal-center',
++        component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
++        props: { section: 'overview' },
++        meta: { requiresUserAuth: true }
++    },
++    {
++        path: '/me/profile',
++        name: 'personal-center-profile',
++        component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
++        props: { section: 'profile' },
++        meta: { requiresUserAuth: true }
++    },
++    {
++        path: '/me/security',
++        name: 'personal-center-security',
++        component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
++        props: { section: 'security' },
++        meta: { requiresUserAuth: true }
++    },
++    {
++        path: '/me/orders',
++        name: 'personal-center-orders',
++        component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
++        props: { section: 'orders' },
++        meta: { requiresUserAuth: true }
++    },
++    {
++        path: '/me/wallet',
++        name: 'personal-center-wallet',
++        component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
++        props: { section: 'wallet' },
++        meta: { requiresUserAuth: true }
++    },
++    {
++        path: '/me/gift-cards',
++        name: 'personal-center-gift-cards',
++        component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
++        props: { section: 'giftCard' },
++        meta: { requiresUserAuth: true }
++    },
++    {
++        path: '/me/api',
++        name: 'personal-center-api',
++        component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
++        props: { section: 'api' },
++        meta: { requiresUserAuth: true }
++    },
++    {
++        path: '/me/affiliate',
++        name: 'personal-center-affiliate',
++        component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
++        props: { section: 'affiliate' },
++        meta: { requiresUserAuth: true }
++    },
++    {
++        path: '/me/reseller',
++        name: 'personal-center-reseller',
++        redirect: '/reseller',
++        meta: { requiresUserAuth: true, resellerConsole: true }
++    },
++    {
++        path: '/reseller',
++        component: resellerLayoutLoader,
++        meta: { requiresUserAuth: true, resellerConsole: true },
++        children: [
++            { path: '', name: 'reseller-dashboard', component: () => import('../views/reseller/ResellerDashboard.vue') },
++            { path: 'apply', name: 'reseller-apply', component: () => import('../views/reseller/ResellerApply.vue') },
++            { path: 'domains', name: 'reseller-domains', component: () => import('../views/reseller/ResellerDomains.vue') },
++            { path: 'site', name: 'reseller-site', component: () => import('../views/reseller/ResellerSiteConfig.vue') },
++            { path: 'products', name: 'reseller-products', component: () => import('../views/reseller/ResellerProducts.vue') },
++            { path: 'orders', name: 'reseller-orders', component: () => import('../views/reseller/ResellerOrders.vue') },
++            { path: 'orders/:order_no', name: 'reseller-order-detail', component: () => import('../views/reseller/ResellerOrderDetail.vue') },
++            { path: 'finance', name: 'reseller-finance', component: () => import('../views/reseller/ResellerFinance.vue') },
++            { path: 'ledger', name: 'reseller-ledger', component: () => import('../views/reseller/ResellerLedger.vue') },
++            { path: 'withdraws', name: 'reseller-withdraws', component: () => import('../views/reseller/ResellerWithdraws.vue') },
++        ],
++    },
++    {
++        path: '/orders/:order_no',
++        name: 'order-detail',
++        component: templateView('OrderDetail', () => import('../views/OrderDetail.vue')),
++        meta: { requiresUserAuth: true }
++    },
++    {
++        path: '/recharge-orders/:recharge_no',
++        name: 'recharge-order-detail',
++        component: templateView('RechargeOrderDetail', () => import('../views/RechargeOrderDetail.vue')),
++        meta: { requiresUserAuth: true }
++    },
++    {
++        path: '/guest/orders',
++        name: 'guest-orders',
++        component: templateView('GuestOrders', () => import('../views/GuestOrders.vue')),
++    },
++    {
++        path: '/guest/orders/:order_no',
++        name: 'guest-order-detail',
++        component: templateView('GuestOrderDetail', () => import('../views/GuestOrderDetail.vue')),
++    },
++    {
++        path: '/blog',
++        name: 'blog',
++        component: templateView('Blog', blogViewLoader),
++    },
++    {
++        path: '/blog/:slug',
++        name: 'blog-detail',
++        component: templateView('BlogDetail', () => import('../views/BlogDetail.vue')),
++    },
++    {
++        path: '/notice',
++        name: 'notice',
++        component: templateView('Notice', noticeViewLoader),
++    },
++    {
++        path: '/about',
++        name: 'about',
++        component: templateView('About', () => import('../views/About.vue')),
++    },
++    {
++        path: '/terms',
++        name: 'terms',
++        component: templateView('Legal', () => import('../views/Legal.vue')),
++        props: { type: 'terms' }
++    },
++    {
++        path: '/privacy',
++        name: 'privacy',
++        component: templateView('Legal', () => import('../views/Legal.vue')),
++        props: { type: 'privacy' }
++    },
++    {
++        path: '/auth/login',
++        name: 'user-login',
++        component: templateView('auth/Login', loginViewLoader),
++        meta: { userGuest: true }
++    },
++    {
++        path: '/auth/register',
++        name: 'user-register',
++        component: templateView('auth/Register', () => import('../views/auth/Register.vue')),
++        meta: { userGuest: true }
++    },
++    {
++        path: '/auth/forgot',
++        name: 'user-forgot',
++        component: templateView('auth/Forgot', () => import('../views/auth/Forgot.vue')),
++        meta: { userGuest: true }
++    },
++    {
++        path: '/auth/telegram/callback',
++        name: 'user-telegram-callback',
++        component: templateView('auth/TelegramCallback', () => import('../views/auth/TelegramCallback.vue')),
++    },
++    {
++        path: '/:pathMatch(.*)*',
++        name: 'not-found',
++        component: templateView('NotFound', () => import('../views/NotFound.vue')),
++    },
++]
++
+ const router = createRouter({
+     history: createWebHistory(import.meta.env.BASE_URL),
+     scrollBehavior(to, _from, savedPosition) {
+@@ -110,214 +366,7 @@ const router = createRouter({
+         }
+         return { top: 0 }
+     },
+-    routes: [
+-        {
+-            path: '/',
+-            name: 'home',
+-            component: templateView('Home', homeViewLoader),
+-        },
+-        {
+-            path: '/products',
+-            name: 'products',
+-            component: () => {
+-                const appStore = useAppStore()
+-                return appStore.config?.template_mode === 'list'
+-                    ? templateView('Home', homeViewLoader)()
+-                    : templateView('Products', productsViewLoader)()
+-            },
+-        },
+-        {
+-            path: '/categories/:slug',
+-            name: 'category-products',
+-            component: () => {
+-                const appStore = useAppStore()
+-                return appStore.config?.template_mode === 'list'
+-                    ? templateView('Home', homeViewLoader)()
+-                    : templateView('Products', productsViewLoader)()
+-            },
+-        },
+-        {
+-            path: '/products/:slug',
+-            name: 'product-detail',
+-            component: templateView('ProductDetail', productDetailViewLoader),
+-        },
+-        {
+-            path: '/cart',
+-            name: 'cart',
+-            component: templateView('Cart', cartViewLoader),
+-        },
+-        {
+-            path: '/checkout',
+-            name: 'checkout',
+-            component: templateView('Checkout', checkoutViewLoader),
+-        },
+-        {
+-            path: '/pay',
+-            name: 'payment',
+-            component: templateView('Payment', paymentViewLoader),
+-        },
+-        {
+-            path: '/me',
+-            name: 'personal-center',
+-            component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
+-            props: { section: 'overview' },
+-            meta: { requiresUserAuth: true }
+-        },
+-        {
+-            path: '/me/profile',
+-            name: 'personal-center-profile',
+-            component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
+-            props: { section: 'profile' },
+-            meta: { requiresUserAuth: true }
+-        },
+-        {
+-            path: '/me/security',
+-            name: 'personal-center-security',
+-            component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
+-            props: { section: 'security' },
+-            meta: { requiresUserAuth: true }
+-        },
+-        {
+-            path: '/me/orders',
+-            name: 'personal-center-orders',
+-            component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
+-            props: { section: 'orders' },
+-            meta: { requiresUserAuth: true }
+-        },
+-        {
+-            path: '/me/wallet',
+-            name: 'personal-center-wallet',
+-            component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
+-            props: { section: 'wallet' },
+-            meta: { requiresUserAuth: true }
+-        },
+-        {
+-            path: '/me/gift-cards',
+-            name: 'personal-center-gift-cards',
+-            component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
+-            props: { section: 'giftCard' },
+-            meta: { requiresUserAuth: true }
+-        },
+-        {
+-            path: '/me/api',
+-            name: 'personal-center-api',
+-            component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
+-            props: { section: 'api' },
+-            meta: { requiresUserAuth: true }
+-        },
+-        {
+-            path: '/me/affiliate',
+-            name: 'personal-center-affiliate',
+-            component: templateView('PersonalCenter', () => import('../views/PersonalCenter.vue')),
+-            props: { section: 'affiliate' },
+-            meta: { requiresUserAuth: true }
+-        },
+-        {
+-            path: '/me/reseller',
+-            name: 'personal-center-reseller',
+-            redirect: '/reseller',
+-            meta: { requiresUserAuth: true, resellerConsole: true }
+-        },
+-        {
+-            path: '/reseller',
+-            component: resellerLayoutLoader,
+-            meta: { requiresUserAuth: true, resellerConsole: true },
+-            children: [
+-                { path: '', name: 'reseller-dashboard', component: () => import('../views/reseller/ResellerDashboard.vue') },
+-                { path: 'apply', name: 'reseller-apply', component: () => import('../views/reseller/ResellerApply.vue') },
+-                { path: 'domains', name: 'reseller-domains', component: () => import('../views/reseller/ResellerDomains.vue') },
+-                { path: 'site', name: 'reseller-site', component: () => import('../views/reseller/ResellerSiteConfig.vue') },
+-                { path: 'products', name: 'reseller-products', component: () => import('../views/reseller/ResellerProducts.vue') },
+-                { path: 'orders', name: 'reseller-orders', component: () => import('../views/reseller/ResellerOrders.vue') },
+-                { path: 'orders/:order_no', name: 'reseller-order-detail', component: () => import('../views/reseller/ResellerOrderDetail.vue') },
+-                { path: 'finance', name: 'reseller-finance', component: () => import('../views/reseller/ResellerFinance.vue') },
+-                { path: 'ledger', name: 'reseller-ledger', component: () => import('../views/reseller/ResellerLedger.vue') },
+-                { path: 'withdraws', name: 'reseller-withdraws', component: () => import('../views/reseller/ResellerWithdraws.vue') },
+-            ],
+-        },
+-        {
+-            path: '/orders/:order_no',
+-            name: 'order-detail',
+-            component: templateView('OrderDetail', () => import('../views/OrderDetail.vue')),
+-            meta: { requiresUserAuth: true }
+-        },
+-        {
+-            path: '/recharge-orders/:recharge_no',
+-            name: 'recharge-order-detail',
+-            component: templateView('RechargeOrderDetail', () => import('../views/RechargeOrderDetail.vue')),
+-            meta: { requiresUserAuth: true }
+-        },
+-        {
+-            path: '/guest/orders',
+-            name: 'guest-orders',
+-            component: templateView('GuestOrders', () => import('../views/GuestOrders.vue')),
+-        },
+-        {
+-            path: '/guest/orders/:order_no',
+-            name: 'guest-order-detail',
+-            component: templateView('GuestOrderDetail', () => import('../views/GuestOrderDetail.vue')),
+-        },
+-        {
+-            path: '/blog',
+-            name: 'blog',
+-            component: templateView('Blog', blogViewLoader),
+-        },
+-        {
+-            path: '/blog/:slug',
+-            name: 'blog-detail',
+-            component: templateView('BlogDetail', () => import('../views/BlogDetail.vue')),
+-        },
+-        {
+-            path: '/notice',
+-            name: 'notice',
+-            component: templateView('Notice', noticeViewLoader),
+-        },
+-        {
+-            path: '/about',
+-            name: 'about',
+-            component: templateView('About', () => import('../views/About.vue')),
+-        },
+-        {
+-            path: '/terms',
+-            name: 'terms',
+-            component: templateView('Legal', () => import('../views/Legal.vue')),
+-            props: { type: 'terms' }
+-        },
+-        {
+-            path: '/privacy',
+-            name: 'privacy',
+-            component: templateView('Legal', () => import('../views/Legal.vue')),
+-            props: { type: 'privacy' }
+-        },
+-        {
+-            path: '/auth/login',
+-            name: 'user-login',
+-            component: templateView('auth/Login', loginViewLoader),
+-            meta: { userGuest: true }
+-        },
+-        {
+-            path: '/auth/register',
+-            name: 'user-register',
+-            component: templateView('auth/Register', () => import('../views/auth/Register.vue')),
+-            meta: { userGuest: true }
+-        },
+-        {
+-            path: '/auth/forgot',
+-            name: 'user-forgot',
+-            component: templateView('auth/Forgot', () => import('../views/auth/Forgot.vue')),
+-            meta: { userGuest: true }
+-        },
+-        {
+-            path: '/auth/telegram/callback',
+-            name: 'user-telegram-callback',
+-            component: templateView('auth/TelegramCallback', () => import('../views/auth/TelegramCallback.vue')),
+-        },
+-        {
+-            path: '/:pathMatch(.*)*',
+-            name: 'not-found',
+-            component: templateView('NotFound', () => import('../views/NotFound.vue')),
+-        },
+-    ],
++    routes: withLocaleRoutes(baseRoutes),
+ })
+ 
+ // Navigation Guard
+@@ -326,6 +375,12 @@ router.beforeEach(async (to, _from, next) => {
+     const appStore = useAppStore()
+     void captureAffiliateFromRoute(to)
+ 
++    const routeLocale = getRouteLocale(to.params.locale)
++    if (routeLocale && isSupportedLocale(routeLocale) && appStore.locale !== routeLocale) {
++        appStore.setLocale(routeLocale)
++        ;(i18n.global.locale as any).value = routeLocale
++    }
++
+     // Ensure config is loaded before checking template mode
+     if (!appStore.config) {
+         await appStore.loadConfig()
+diff --git a/src/templates/vault/Home.vue b/src/templates/vault/Home.vue
+index 8596bd0..56cb90d 100644
+--- a/src/templates/vault/Home.vue
++++ b/src/templates/vault/Home.vue
+@@ -173,6 +173,7 @@ import { Button } from '@/components/ui/button'
+ import { categoryAPI, postAPI, productAPI } from '../../api'
+ import { buildCategoryGroups, type PublicCategory } from '../../utils/category'
+ import { getImageUrl } from '../../utils/image'
++import { routeBaseName } from '../../utils/routeNames'
+ import { useLocalized } from '../../composables/useProduct'
+ import { useProductList } from '../../composables/useProductList'
+ import { useProductListGroups } from '../../composables/useProductListGroups'
+@@ -316,8 +317,9 @@ const seoCategoryName = computed(() => {
+ usePageSeo({
+   canonicalPath: () => route.path,
+   title: () => {
+-    if (route.name === 'category-products') return seoCategoryName.value || t('nav.products')
+-    if (route.name === 'products') return t('nav.products')
++    const name = routeBaseName(route.name)
++    if (name === 'category-products') return seoCategoryName.value || t('nav.products')
++    if (name === 'products') return t('nav.products')
+     return undefined
+   },
+ })
+diff --git a/src/templates/vault/Products.vue b/src/templates/vault/Products.vue
+index 4ad2ae8..910f75e 100644
+--- a/src/templates/vault/Products.vue
++++ b/src/templates/vault/Products.vue
+@@ -89,6 +89,7 @@ import { useProductList } from '../../composables/useProductList'
+ import { usePageSeo } from '../../composables/usePageSeo'
+ import { useLocalized } from '../../composables/useProduct'
+ import type { PublicCategory } from '../../utils/category'
++import { routeBaseName } from '../../utils/routeNames'
+ import VaultProductCard from './components/VaultProductCard.vue'
+ import VaultCategorySidebar from './components/VaultCategorySidebar.vue'
+ import ProductQuickBuy from '../../components/ProductQuickBuy.vue'
+@@ -131,7 +132,7 @@ const selectedCategoryName = computed(() => {
+ })
+ 
+ const pageTitle = computed(() => {
+-  if (route.name === 'category-products') return selectedCategoryName.value || t('nav.products')
++  if (routeBaseName(route.name) === 'category-products') return selectedCategoryName.value || t('nav.products')
+   return t('nav.products')
+ })
+ 
+diff --git a/src/utils/localeRoutes.ts b/src/utils/localeRoutes.ts
+new file mode 100644
+index 0000000..e705fd8
+--- /dev/null
++++ b/src/utils/localeRoutes.ts
+@@ -0,0 +1,12 @@
++export const localePathMap: Record<string, string> = {
++    'zh-CN': 'zh-CN',
++    'zh-TW': 'zh-TW',
++    'en-US': 'en',
++}
++
++export const pathLocaleMap: Record<string, string> = Object.entries(localePathMap).reduce((acc, [locale, path]) => {
++    acc[path] = locale
++    return acc
++}, {} as Record<string, string>)
++
++export const localePathPrefixes = Object.values(localePathMap)
+diff --git a/src/utils/routeNames.ts b/src/utils/routeNames.ts
+new file mode 100644
+index 0000000..247d974
+--- /dev/null
++++ b/src/utils/routeNames.ts
+@@ -0,0 +1,4 @@
++export const routeBaseName = (name: unknown): string => {
++  const raw = String(name || '')
++  return raw.endsWith('-locale') ? raw.slice(0, -'-locale'.length) : raw
++}
+diff --git a/src/views/Home.vue b/src/views/Home.vue
+index ba70f3c..4c05750 100644
+--- a/src/views/Home.vue
++++ b/src/views/Home.vue
+@@ -360,6 +360,7 @@ import { useProductList } from '../composables/useProductList'
+ import { useProductListGroups } from '../composables/useProductListGroups'
+ import { usePageSeo } from '../composables/usePageSeo'
+ import { useAppStore } from '../stores/app'
++import { routeBaseName } from '../utils/routeNames'
+ import ProductCard from '../components/ProductCard.vue'
+ import ProductListItem from '../components/ProductListItem.vue'
+ import ProductQuickBuy from '../components/ProductQuickBuy.vue'
+@@ -454,10 +455,11 @@ const seoCategoryName = computed(() => {
+ usePageSeo({
+   canonicalPath: () => route.path,
+   title: () => {
+-    if (route.name === 'category-products') {
++    const name = routeBaseName(route.name)
++    if (name === 'category-products') {
+       return seoCategoryName.value || t('nav.products')
+     }
+-    if (route.name === 'products') return t('nav.products')
++    if (name === 'products') return t('nav.products')
+     return undefined
+   },
+ })
+diff --git a/src/views/Products.vue b/src/views/Products.vue
+index dfadc38..7b57d22 100644
+--- a/src/views/Products.vue
++++ b/src/views/Products.vue
+@@ -105,6 +105,7 @@ import { useI18n } from 'vue-i18n'
+ import { useProductList } from '../composables/useProductList'
+ import { usePageSeo } from '../composables/usePageSeo'
+ import { useLocalized } from '../composables/useProduct'
++import { routeBaseName } from '../utils/routeNames'
+ import ProductCard from '../components/ProductCard.vue'
+ import ProductQuickBuy from '../components/ProductQuickBuy.vue'
+ import CategorySidebar from '../components/CategorySidebar.vue'
+@@ -145,7 +146,7 @@ const seoCategoryName = computed(() => {
+ usePageSeo({
+   canonicalPath: () => route.path,
+   title: () => {
+-    if (route.name === 'category-products') {
++    if (routeBaseName(route.name) === 'category-products') {
+       return seoCategoryName.value || t('nav.products')
+     }
+     return t('nav.products')
