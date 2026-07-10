@@ -25,6 +25,7 @@ gates:
 - Production provider credentials.
 - Deployment topology and image/process plan from
   `docs/21-production-deployment-plan.md`.
+- Production config mapping from `docs/22-production-config-mapping.md`.
 
 Do not commit these files when they contain real secrets.
 

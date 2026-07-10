@@ -1,0 +1,162 @@
+# Production Dujiao-Next config template for the separated Compose deployment.
+# Copy outside git-tracked paths before filling real values.
+# Do not commit real secrets.
+
+app:
+  secret_key: CHANGE_ME_APP_SECRET_32_BYTES_MIN
+  totp_issuer: FINAL_SITE_NAME
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  mode: release
+  read_header_timeout_seconds: 5
+  read_timeout_seconds: 30
+  write_timeout_seconds: 60
+  idle_timeout_seconds: 120
+  max_header_bytes: 1048576
+
+log:
+  dir: /app/logs
+  filename: app.log
+  max_size_mb: 100
+  max_backups: 7
+  max_age_days: 30
+  compress: true
+
+database:
+  driver: postgres
+  dsn: "host=postgres port=5432 user=dujiao password=CHANGE_ME_POSTGRES_PASSWORD dbname=dujiao sslmode=disable TimeZone=UTC"
+  pool:
+    max_open_conns: 25
+    max_idle_conns: 10
+    conn_max_lifetime_seconds: 3600
+    conn_max_idle_time_seconds: 600
+
+jwt:
+  secret: CHANGE_ME_ADMIN_JWT_SECRET
+  expire_hours: 24
+
+user_jwt:
+  secret: CHANGE_ME_USER_JWT_SECRET
+  expire_hours: 24
+  remember_me_expire_hours: 168
+
+bootstrap:
+  default_admin_username: ""
+  default_admin_password: ""
+
+telegram_auth:
+  enabled: false
+  bot_username: ""
+  bot_token: ""
+  client_secret: ""
+  oidc_redirect_uri: ""
+  mini_app_url: ""
+  login_expire_seconds: 300
+  replay_ttl_seconds: 300
+
+redis:
+  enabled: true
+  host: redis
+  port: 6379
+  password: CHANGE_ME_REDIS_PASSWORD
+  db: 0
+  prefix: target
+
+queue:
+  enabled: true
+  host: redis
+  port: 6379
+  password: CHANGE_ME_REDIS_PASSWORD
+  db: 1
+  concurrency: 10
+  queues:
+    default: 10
+    critical: 5
+  upstream_sync_interval: "30m"
+
+upload:
+  max_size: 10485760
+  allowed_types:
+    - image/jpeg
+    - image/png
+    - image/gif
+    - image/webp
+    - image/svg+xml
+  allowed_extensions:
+    - .jpg
+    - .jpeg
+    - .png
+    - .gif
+    - .webp
+    - .svg
+  max_width: 4096
+  max_height: 4096
+
+cors:
+  allowed_origins:
+    - https://FINAL_DOMAIN
+    - https://FINAL_ADMIN_DOMAIN
+  allowed_methods:
+    - GET
+    - POST
+    - PUT
+    - PATCH
+    - DELETE
+    - OPTIONS
+  allowed_headers:
+    - Content-Type
+    - Content-Length
+    - Accept-Encoding
+    - Authorization
+    - Cache-Control
+    - X-Requested-With
+    - X-CSRF-Token
+    - X-Lang
+  allow_credentials: true
+  max_age: 600
+
+security:
+  login_rate_limit:
+    window_seconds: 300
+    max_attempts: 5
+    block_seconds: 900
+  password_policy:
+    min_length: 12
+    require_upper: true
+    require_lower: true
+    require_number: true
+    require_special: true
+
+email:
+  enabled: false
+  host: ""
+  port: 465
+  username: ""
+  password: ""
+  from: FINAL_SUPPORT_EMAIL
+  from_name: FINAL_SITE_NAME
+  use_tls: false
+  use_ssl: true
+  verify_code:
+    expire_minutes: 10
+    send_interval_seconds: 60
+    max_attempts: 5
+    length: 6
+
+order:
+  payment_expire_minutes: 15
+  max_refund_days: 30
+
+reseller:
+  enabled: false
+  main_hosts:
+    - FINAL_DOMAIN
+  trusted_forwarded_host: false
+  subdomain_base: ""
+  self_apply_enabled: false
+  settlement_confirm_days: 7
+
+web:
+  admin_path: "/console-private"

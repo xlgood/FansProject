@@ -253,10 +253,12 @@ A minimal separated deployment Compose template is available at:
 
 - `ops/compose/docker-compose.production.yml`
 - `ops/compose/.env.production.example`
+- `ops/compose/config.yml.production.example`
 
 Use it as a structure reference, not as a complete secret-management solution.
 Copy `.env.production.example` outside git-tracked paths before filling real
-values.
+values. Copy `config.yml.production.example` outside git-tracked paths before
+filling real backend secrets.
 
 Example:
 
@@ -276,6 +278,8 @@ docker compose \
 Before running `up`, provide `/secure/path/config.yml` or update
 `DUJIAO_CONFIG_PATH` to point at the production backend config generated from
 `docs/19-production-config-template.md`.
+The exact mapping from Compose env values to backend config fields is documented
+in `docs/22-production-config-mapping.md`.
 
 Validate the rendered Compose file in an environment with Docker installed:
 

@@ -110,7 +110,7 @@ section_value() {
 
 check_secret_placeholders() {
   file="$1"
-  if grep -Eq 'your-secret-key-change-in-production-please|user-secret-key-change-in-production-please|Admin12345|your-password|your-username|change-in-production' "$file"; then
+  if grep -Eq 'your-secret-key-change-in-production-please|user-secret-key-change-in-production-please|Admin12345|your-password|your-username|change-in-production|CHANGE_ME|FINAL_[A-Z_]*' "$file"; then
     fail "$file contains default placeholder secrets"
   else
     pass "$file has no known default secret placeholders"

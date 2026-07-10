@@ -351,12 +351,13 @@ Remaining implementation:
 
 ## Phase 8: Production Security And Compliance
 
-Status: launch security checklist, production config template, go-live runbook,
-production deployment plan, and app-level HTTP server timeout configuration
-added on 2026-07-10. Details are recorded in
+Status: launch security checklist, production config template, production
+config mapping, go-live runbook, production deployment plan, and app-level HTTP
+server timeout configuration added on 2026-07-10. Details are recorded in
 `docs/18-production-security-compliance-checklist.md`,
 `docs/19-production-config-template.md`, `docs/20-go-live-runbook.md`, and
-`docs/21-production-deployment-plan.md`.
+`docs/21-production-deployment-plan.md`,
+`docs/22-production-config-mapping.md`.
 
 Goal: make production launch blockers explicit before live traffic or payments.
 
@@ -379,6 +380,8 @@ Tasks:
 - Make the prelaunch audit a mandatory first gate in the final go-live
   sequence.
 - Document the default production deployment topology and build/run strategy.
+- Document how Compose env values map to backend `config.yml`, frontend build
+  variables, and post-boot admin settings.
 
 Success criteria:
 
@@ -402,5 +405,7 @@ Completed verification:
 - Final go-live gate sequence is documented in `docs/20-go-live-runbook.md`.
 - Default production deployment plan is documented in
   `docs/21-production-deployment-plan.md`.
+- Production config mapping is documented in
+  `docs/22-production-config-mapping.md`.
 - Targeted tests passed:
   - `cd dujiao-next && GOCACHE=/Users/river/FansProject/dujiao-next/.gocache GOMODCACHE=/Users/river/FansProject/dujiao-next/.gomodcache go test ./internal/app ./internal/config`
