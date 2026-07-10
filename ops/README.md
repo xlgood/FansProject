@@ -46,6 +46,16 @@ Gate 1 input templates live in `ops/gate1/`:
 They intentionally contain placeholders. Copy them outside the repository and
 replace all placeholders before using them as audit inputs.
 
+## Nginx Template
+
+Reverse proxy examples live in `ops/nginx/`:
+
+- `target-site.conf.example`
+- `target-proxy-headers.conf.example`
+
+Copy them outside the repository, replace all `FINAL_*` placeholders and TLS
+certificate paths, then validate with `nginx -t` before reload.
+
 ## Compose Template
 
 Separated deployment scaffolding lives in `ops/compose/`:

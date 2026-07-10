@@ -167,6 +167,7 @@ Required proxy behavior:
 
 - Redirect HTTP to HTTPS.
 - Set security headers from `docs/18-production-security-compliance-checklist.md`.
+- Use the Nginx/CDN template notes in `docs/23-reverse-proxy-cdn.md`.
 - Preserve `Host`.
 - Pass exactly one trusted country header for first-visit locale.
 - Strip untrusted incoming `X-Forwarded-Host`.

@@ -26,6 +26,7 @@ gates:
 - Deployment topology and image/process plan from
   `docs/21-production-deployment-plan.md`.
 - Production config mapping from `docs/22-production-config-mapping.md`.
+- Reverse proxy/CDN plan from `docs/23-reverse-proxy-cdn.md`.
 
 Input templates:
 
