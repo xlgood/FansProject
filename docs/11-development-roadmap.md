@@ -351,10 +351,10 @@ Remaining implementation:
 
 ## Phase 8: Production Security And Compliance
 
-Status: launch security checklist, production config template, and app-level
-HTTP server timeout configuration added on 2026-07-10. Details are recorded in
-`docs/18-production-security-compliance-checklist.md` and
-`docs/19-production-config-template.md`.
+Status: launch security checklist, production config template, go-live runbook,
+and app-level HTTP server timeout configuration added on 2026-07-10. Details
+are recorded in `docs/18-production-security-compliance-checklist.md`,
+`docs/19-production-config-template.md`, and `docs/20-go-live-runbook.md`.
 
 Goal: make production launch blockers explicit before live traffic or payments.
 
@@ -374,6 +374,8 @@ Tasks:
   provider operating switches.
 - Add a read-only prelaunch audit for production config, frontend env, and
   public wording checks.
+- Make the prelaunch audit a mandatory first gate in the final go-live
+  sequence.
 
 Success criteria:
 
@@ -394,5 +396,6 @@ Completed verification:
   `docs/19-production-config-template.md`.
 - Read-only production prelaunch audit script is available at
   `ops/prelaunch-audit.sh`.
+- Final go-live gate sequence is documented in `docs/20-go-live-runbook.md`.
 - Targeted tests passed:
   - `cd dujiao-next && GOCACHE=/Users/river/FansProject/dujiao-next/.gocache GOMODCACHE=/Users/river/FansProject/dujiao-next/.gomodcache go test ./internal/app ./internal/config`

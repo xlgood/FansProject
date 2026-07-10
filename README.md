@@ -41,6 +41,10 @@
 - `docs/08-coding-standards.md`：代码规范，基于 karpathy-guidelines。
 - `docs/09-master-development-playbook.md`：从接管源码到上线的执行手册。
 - `docs/10-open-questions.md`：实施前必须确认的问题清单。
+- `docs/11-development-roadmap.md`：正式开发路线图和阶段完成记录。
+- `docs/18-production-security-compliance-checklist.md`：生产安全与合规上线阻断清单。
+- `docs/19-production-config-template.md`：生产配置模板，含域名、支付、CORS、Redis、队列和密钥占位。
+- `docs/20-go-live-runbook.md`：最终上线 gate 顺序，要求先跑 `ops/prelaunch-audit.sh`。
 
 ## 信息来源
 

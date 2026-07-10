@@ -5,6 +5,9 @@ Date: 2026-07-10
 Related production configuration worksheet:
 `docs/19-production-config-template.md`.
 
+Related go-live sequence:
+`docs/20-go-live-runbook.md`.
+
 ## Purpose
 
 Block production launch until secrets, public wording, payment callbacks,
@@ -243,7 +246,18 @@ Required checks:
 
 ## Verification Commands
 
-Run before launch:
+Run the production audit first. Launch is blocked unless this reports `0`
+failures:
+
+```bash
+bash ops/prelaunch-audit.sh \
+  --backend-config /path/to/production/config.yml \
+  --site-config /path/to/site_config.json \
+  --user-env /path/to/user.env.production \
+  --admin-env /path/to/admin.env.production
+```
+
+Then run tests and builds:
 
 ```bash
 cd dujiao-next
@@ -275,7 +289,9 @@ curl -i https://FINAL_DOMAIN/robots.txt
 ## Go-Live Decision
 
 Launch is blocked until all launch blockers are closed and the runtime smoke
-passes on the final domain.
+passes on the final domain. The fixed gate order is documented in
+`docs/20-go-live-runbook.md`; Gate 1 is mandatory and requires
+`ops/prelaunch-audit.sh` to report `0` failures.
 
 After launch:
 
