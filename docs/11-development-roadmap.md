@@ -297,6 +297,9 @@ Remaining implementation:
 
 ## Phase 7: Language, SEO, And Branding
 
+Status: default first-visit locale completed on 2026-07-10. Details are
+recorded in `docs/16-language-seo-branding-readiness.md`.
+
 Goal: prepare public launch surface.
 
 Tasks:
@@ -312,3 +315,19 @@ Success criteria:
 - Each locale is directly accessible.
 - Placeholder domains and assets are replaceable before launch.
 - No Telegram or non-intersection platform pages are published.
+
+Completed verification:
+
+- Backend public config now exposes `default_locale` from country headers or
+  `Accept-Language`.
+- User frontend applies server default locale only when no manual language
+  override exists.
+- Existing branding and SEO config surfaces were confirmed for launch asset
+  replacement.
+- Targeted checks passed:
+  - `go test ./internal/http/handlers/public -run 'Test(LocaleFromCountryCode|ResolvePublicDefaultLocale)'`
+  - `cd user && ./node_modules/.bin/vue-tsc -b`
+
+Remaining implementation:
+
+- Add locale-prefixed public routes and `hreflang` metadata.

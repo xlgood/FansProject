@@ -1,0 +1,112 @@
+diff --git a/internal/http/handlers/public/public.go b/internal/http/handlers/public/public.go
+index be3f86a..107e8da 100644
+--- a/internal/http/handlers/public/public.go
++++ b/internal/http/handlers/public/public.go
+@@ -274,6 +274,7 @@ func (h *Handler) GetConfig(c *gin.Context) {
+ 	// 默认配置
+ 	defaults := map[string]interface{}{
+ 		"languages":                              append([]string(nil), constants.SupportedLocales...),
++		"default_locale":                         resolvePublicDefaultLocale(c),
+ 		constants.SettingFieldSiteCurrency:       constants.SiteCurrencyDefault,
+ 		constants.SettingFieldStorefrontTemplate: constants.StorefrontTemplateDefault,
+ 		"contact": map[string]interface{}{
+@@ -397,6 +398,39 @@ func (h *Handler) GetConfig(c *gin.Context) {
+ 	response.Success(c, data)
+ }
+ 
++func resolvePublicDefaultLocale(c *gin.Context) string {
++	if c == nil {
++		return constants.LocaleZhCN
++	}
++
++	for _, header := range []string{
++		"CF-IPCountry",
++		"CloudFront-Viewer-Country",
++		"X-Vercel-IP-Country",
++		"X-Country-Code",
++	} {
++		if locale := localeFromCountryCode(c.GetHeader(header)); locale != "" {
++			return locale
++		}
++	}
++
++	return i18n.ResolveLocale(c)
++}
++
++func localeFromCountryCode(country string) string {
++	code := strings.ToUpper(strings.TrimSpace(country))
++	switch code {
++	case "CN":
++		return constants.LocaleZhCN
++	case "HK", "MO", "TW":
++		return constants.LocaleZhTW
++	case "US", "GB", "CA", "AU", "NZ", "IE", "SG":
++		return constants.LocaleEnUS
++	default:
++		return ""
++	}
++}
++
+ // GetPublicMemberLevels 获取公共会员等级列表
+ func (h *Handler) GetPublicMemberLevels(c *gin.Context) {
+ 	levels, err := h.MemberLevelService.ListActiveLevels()
+diff --git a/internal/http/handlers/public/public_locale_test.go b/internal/http/handlers/public/public_locale_test.go
+new file mode 100644
+index 0000000..f05cf87
+--- /dev/null
++++ b/internal/http/handlers/public/public_locale_test.go
+@@ -0,0 +1,51 @@
++package public
++
++import (
++	"net/http"
++	"net/http/httptest"
++	"testing"
++
++	"github.com/dujiao-next/internal/constants"
++	"github.com/gin-gonic/gin"
++)
++
++func TestLocaleFromCountryCode(t *testing.T) {
++	cases := []struct {
++		country string
++		want    string
++	}{
++		{country: "CN", want: constants.LocaleZhCN},
++		{country: "hk", want: constants.LocaleZhTW},
++		{country: "TW", want: constants.LocaleZhTW},
++		{country: "US", want: constants.LocaleEnUS},
++		{country: "SG", want: constants.LocaleEnUS},
++		{country: "JP", want: ""},
++		{country: "", want: ""},
++	}
++
++	for _, tc := range cases {
++		if got := localeFromCountryCode(tc.country); got != tc.want {
++			t.Fatalf("localeFromCountryCode(%q)=%q want %q", tc.country, got, tc.want)
++		}
++	}
++}
++
++func TestResolvePublicDefaultLocalePrefersCountryHeaders(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++	c, _ := gin.CreateTestContext(httptest.NewRecorder())
++	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/public/config", nil)
++	c.Request.Header.Set("Accept-Language", "zh-CN")
++	c.Request.Header.Set("CF-IPCountry", "TW")
++
++	if got := resolvePublicDefaultLocale(c); got != constants.LocaleZhTW {
++		t.Fatalf("default locale=%q want %q", got, constants.LocaleZhTW)
++	}
++}
++
++func TestResolvePublicDefaultLocaleFallsBackToAcceptLanguage(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++	c, _ := gin.CreateTestContext(httptest.NewRecorder())
++	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/public/config", nil)
++	c.Request.Header.Set("Accept-Language", "en-US,en;q=0.9")
++
++	if got := resolvePublicDefaultLocale(c); got != constants.LocaleEnUS {
++		t.Fatalf("default locale=%q want %q", got, constants.LocaleEnUS)
++	}
++}
