@@ -27,6 +27,7 @@ logs/
 # Runtime data
 tmp/
 cache/
+deploy/production-local/
 *.sqlite
 *.sqlite3
 

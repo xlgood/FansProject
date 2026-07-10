@@ -52,6 +52,7 @@
 - `docs/25-launch-acceptance-checklist.md`：上线前人工验收与最终 sign-off 清单。
 - `docs/26-final-project-audit.md`：进入真实生产配置前的最终项目审计和剩余上线 gate。
 - `docs/27-gate1-production-config-workbook.md`：Gate 1 真实生产配置准备工作单。
+- `ops/init-production-local.sh`：复制生产配置模板到本地忽略目录 `deploy/production-local/`。
 - `ops/compose/docker-compose.production.yml`：最小三服务分离部署 Compose 模板。
 - `ops/gate1/`：Gate 1 审计输入模板，含 `site_config` 和前后台生产 env 示例。
 

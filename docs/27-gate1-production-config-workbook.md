@@ -31,6 +31,15 @@ Create these files outside git-tracked paths:
 The exact `/secure/target` path can be changed by operations. The important
 rule is that real secrets stay outside git.
 
+For a local draft in this workspace, initialize ignored files with:
+
+```bash
+bash ops/init-production-local.sh
+```
+
+This creates `deploy/production-local/` from the templates. The script does not
+overwrite existing files.
+
 ## Required Decisions
 
 Decide these before editing production files:
