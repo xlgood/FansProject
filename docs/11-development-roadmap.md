@@ -250,12 +250,13 @@ Completed verification:
 
 Remaining implementation:
 
-- Run a frontend/admin local smoke pass against mocked backend data.
+- No additional fulfillment-specific smoke item remains in this phase.
 
 ## Phase 6: Frontend And Admin
 
-Status: frontend/admin smoke verification completed on 2026-07-09. Details are
-recorded in `docs/14-frontend-admin-smoke.md`.
+Status: frontend/admin smoke verification and browser runtime smoke completed
+on 2026-07-10. Details are recorded in `docs/14-frontend-admin-smoke.md` and
+`docs/15-browser-runtime-smoke.md`.
 
 Goal: make the integrated catalog usable.
 
@@ -282,11 +283,17 @@ Completed verification:
   - `cd admin && ./node_modules/.bin/vue-tsc -b`
 - Admin frontend production build passed:
   - `cd admin && ./node_modules/.bin/vite build`
+- Browser runtime smoke passed after adding backend CORS support for the
+  frontend `X-Lang` request header:
+  - backend `/health` returned `200 OK`;
+  - user frontend and admin frontend returned `200 OK`;
+  - Chrome headless rendered the user home page and admin login page;
+  - CORS preflight for `x-lang` now includes `X-Lang` in
+    `Access-Control-Allow-Headers`.
 
 Remaining implementation:
 
-- Run a browser smoke pass with backend/admin/user dev servers when local
-  runtime data is ready.
+- Validate language, SEO, and branding launch readiness.
 
 ## Phase 7: Language, SEO, And Branding
 

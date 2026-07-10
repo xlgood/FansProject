@@ -1,0 +1,95 @@
+diff --git a/internal/config/config.go b/internal/config/config.go
+index 9277c1e..ab391b5 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -223,6 +223,7 @@ var (
+ 		"Cache-Control",
+ 		"X-Requested-With",
+ 		"X-CSRF-Token",
++		"X-Lang",
+ 	}
+ )
+ 
+diff --git a/internal/router/middleware.go b/internal/router/middleware.go
+index 4c468b1..1104ab1 100644
+--- a/internal/router/middleware.go
++++ b/internal/router/middleware.go
+@@ -42,6 +42,7 @@ func CORSMiddleware(cfg config.CORSConfig) gin.HandlerFunc {
+ 	if len(allowedHeaders) == 0 {
+ 		allowedHeaders = config.DefaultCORSAllowedHeaders()
+ 	}
++	allowedHeaders = ensureCORSHeaders(allowedHeaders, "X-Lang")
+ 	methodsHeader := strings.Join(allowedMethods, ", ")
+ 	headersHeader := strings.Join(allowedHeaders, ", ")
+ 
+@@ -72,6 +73,23 @@ func CORSMiddleware(cfg config.CORSConfig) gin.HandlerFunc {
+ 	}
+ }
+ 
++func ensureCORSHeaders(headers []string, required ...string) []string {
++	result := append([]string(nil), headers...)
++	for _, item := range required {
++		exists := false
++		for _, header := range result {
++			if strings.EqualFold(strings.TrimSpace(header), item) {
++				exists = true
++				break
++			}
++		}
++		if !exists {
++			result = append(result, item)
++		}
++	}
++	return result
++}
++
+ func resolveAllowedOrigin(origin string, allowedOrigins []string, allowCredentials bool) string {
+ 	if len(allowedOrigins) == 0 {
+ 		return ""
+diff --git a/internal/router/middleware_test.go b/internal/router/middleware_test.go
+index 60528d7..06a9cf8 100644
+--- a/internal/router/middleware_test.go
++++ b/internal/router/middleware_test.go
+@@ -7,6 +7,7 @@ import (
+ 	"strings"
+ 	"testing"
+ 
++	"github.com/dujiao-next/internal/config"
+ 	"github.com/gin-gonic/gin"
+ )
+ 
+@@ -98,3 +99,34 @@ func TestJWTAuthMiddlewareMissingSecret(t *testing.T) {
+ 		t.Fatalf("status_code want 401 got %d", resp.StatusCode)
+ 	}
+ }
++
++func TestCORSMiddlewareAllowsFrontendLanguageHeader(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++	r := gin.New()
++	r.Use(CORSMiddleware(config.CORSConfig{
++		AllowedHeaders:   []string{"Content-Type", "Authorization"},
++		AllowCredentials: true,
++		MaxAge:           600,
++	}))
++	r.GET("/api/v1/public/config", func(c *gin.Context) {
++		c.String(http.StatusOK, "ok")
++	})
++
++	req := httptest.NewRequest(http.MethodOptions, "/api/v1/public/config", nil)
++	req.Header.Set("Origin", "http://127.0.0.1:5173")
++	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
++	req.Header.Set("Access-Control-Request-Headers", "x-lang")
++
++	w := httptest.NewRecorder()
++	r.ServeHTTP(w, req)
++
++	if w.Code != http.StatusNoContent {
++		t.Fatalf("status=%d want %d", w.Code, http.StatusNoContent)
++	}
++	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "http://127.0.0.1:5173" {
++		t.Fatalf("Access-Control-Allow-Origin=%q", got)
++	}
++	if got := w.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(strings.ToLower(got), "x-lang") {
++		t.Fatalf("Access-Control-Allow-Headers=%q, want X-Lang", got)
++	}
++}
