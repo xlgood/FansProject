@@ -154,4 +154,5 @@ Launch remains blocked until:
 - final domain runtime smoke passes;
 - payment acceptance passes;
 - explicitly approved low-value provider acceptance passes;
+- the launch cutover runbook is complete;
 - the sign-off table in `docs/25-launch-acceptance-checklist.md` is complete.

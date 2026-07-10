@@ -30,6 +30,7 @@ Use this table for the final launch record:
 | Language/SEO/brand |  |  |  |  |
 | Public wording/compliance |  |  |  |  |
 | Rollback readiness |  |  |  |  |
+| Cutover runbook |  |  |  |  |
 | Final launch approval |  |  |  |  |
 
 ## Gate Evidence
@@ -48,6 +49,7 @@ Required:
   `docs/31-production-data-initialization.md` is complete.
 - Prelaunch E2E acceptance from `docs/32-prelaunch-e2e-acceptance.md` is
   complete.
+- Launch cutover runbook from `docs/33-launch-cutover-runbook.md` is complete.
 
 Evidence to attach:
 

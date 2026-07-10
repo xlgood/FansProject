@@ -36,6 +36,7 @@ gates:
   `docs/31-production-data-initialization.md`.
 - Prelaunch E2E acceptance workbook from
   `docs/32-prelaunch-e2e-acceptance.md`.
+- Launch cutover runbook from `docs/33-launch-cutover-runbook.md`.
 
 Input templates:
 
@@ -228,6 +229,8 @@ Launch can proceed only when:
   Operational procedures are documented in `docs/24-operations-runbook.md`.
 - Final human acceptance is recorded in
   `docs/25-launch-acceptance-checklist.md`.
+- The cutover roles, rollback inputs, and go/no-go checklist in
+  `docs/33-launch-cutover-runbook.md` are complete.
 
 ## Post-Launch
 
