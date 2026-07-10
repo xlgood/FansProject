@@ -1,0 +1,12 @@
+diff --git a/src/i18n/index.ts b/src/i18n/index.ts
+--- a/src/i18n/index.ts
++++ b/src/i18n/index.ts
+@@ -4613,7 +4613,7 @@ const messages = {
+             qrTitle: 'Scan to pay',
+             qrTip: 'Open your payment app and scan to complete payment.',
+             redirectTitle: 'Redirect to pay',
+-            redirectTip: 'Open the payment link and complete payment on the provider page.',
++            redirectTip: 'Open the payment link and complete payment on the secure payment page.',
+             qrFallbackHint: 'This channel returned a payment link. A scannable QR code was generated automatically.',
+             expiresAt: 'Expires at',
+             countdownLabel: 'Time left',
