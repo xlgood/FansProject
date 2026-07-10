@@ -280,6 +280,9 @@ Expected:
 - public config shows the final brand and `currency: "USD"`;
 - no public response exposes provider credentials or internal wording.
 
+After initial smoke passes, run the prelaunch E2E workbook in
+`docs/32-prelaunch-e2e-acceptance.md` before enabling public traffic.
+
 ## Payment Readiness
 
 Before enabling live payment channels, complete

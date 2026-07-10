@@ -34,6 +34,8 @@ gates:
 - Payment launch workbook from `docs/30-payment-launch-workbook.md`.
 - Production data initialization checklist from
   `docs/31-production-data-initialization.md`.
+- Prelaunch E2E acceptance workbook from
+  `docs/32-prelaunch-e2e-acceptance.md`.
 
 Input templates:
 
@@ -191,6 +193,10 @@ If Alipay or WeChat Pay converts USD to CNY, verify the stored payment row uses
 the actual gateway amount/currency and that callback matching still succeeds.
 
 ## Gate 5: Provider Fulfillment Verification
+
+Run the non-live parts of `docs/32-prelaunch-e2e-acceptance.md` before live
+provider submission. Run live provider fulfillment only with explicit approval
+and low-value orders.
 
 Only run live provider submission with explicit approval and low-value orders.
 

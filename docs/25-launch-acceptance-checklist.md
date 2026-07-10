@@ -24,6 +24,7 @@ Use this table for the final launch record:
 | Tests and builds |  |  |  |  |
 | Data initialization |  |  |  |  |
 | Runtime smoke |  |  |  |  |
+| E2E acceptance |  |  |  |  |
 | Payment acceptance |  |  |  |  |
 | Provider acceptance |  |  |  |  |
 | Language/SEO/brand |  |  |  |  |
@@ -45,6 +46,8 @@ Required:
 - Compose config renders with `docker compose config`.
 - Production data initialization from
   `docs/31-production-data-initialization.md` is complete.
+- Prelaunch E2E acceptance from `docs/32-prelaunch-e2e-acceptance.md` is
+  complete.
 
 Evidence to attach:
 
