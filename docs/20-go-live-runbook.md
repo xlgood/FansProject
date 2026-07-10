@@ -27,6 +27,15 @@ gates:
   `docs/21-production-deployment-plan.md`.
 - Production config mapping from `docs/22-production-config-mapping.md`.
 
+Input templates:
+
+- `ops/compose/config.yml.production.example`
+- `ops/gate1/site_config.json.example`
+- `ops/gate1/user.env.production.example`
+- `ops/gate1/admin.env.production.example`
+
+Copy these outside git-tracked paths and replace all placeholders before Gate 1.
+
 Do not commit these files when they contain real secrets.
 
 ## Gate 1: Configuration Audit

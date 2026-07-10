@@ -48,6 +48,7 @@
 - `docs/21-production-deployment-plan.md`：生产部署拓扑、构建方式、反代路由和 fullstack 备选说明。
 - `docs/22-production-config-mapping.md`：Compose env、后端 `config.yml` 和后台设置的生产映射说明。
 - `ops/compose/docker-compose.production.yml`：最小三服务分离部署 Compose 模板。
+- `ops/gate1/`：Gate 1 审计输入模板，含 `site_config` 和前后台生产 env 示例。
 
 ## 信息来源
 

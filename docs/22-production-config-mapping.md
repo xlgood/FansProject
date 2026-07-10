@@ -19,6 +19,9 @@ Templates:
 
 - `ops/compose/.env.production.example`
 - `ops/compose/config.yml.production.example`
+- `ops/gate1/site_config.json.example`
+- `ops/gate1/user.env.production.example`
+- `ops/gate1/admin.env.production.example`
 - `docs/19-production-config-template.md`
 
 Runtime mount:
@@ -146,6 +149,10 @@ Pass criteria:
 - `FAIL` count is `0`.
 - Warnings have explicit owner decisions.
 - Public config returns `currency: "USD"` after deployment.
+
+The example files under `ops/gate1/` intentionally contain `FINAL_*`
+placeholders. They are structure templates only. Copy them outside git-tracked
+paths and replace placeholders before using them as Gate 1 inputs.
 
 If Docker is available, validate Compose rendering:
 

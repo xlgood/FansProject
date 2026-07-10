@@ -352,11 +352,11 @@ Remaining implementation:
 ## Phase 8: Production Security And Compliance
 
 Status: launch security checklist, production config template, production
-config mapping, go-live runbook, production deployment plan, and app-level HTTP
-server timeout configuration added on 2026-07-10. Details are recorded in
-`docs/18-production-security-compliance-checklist.md`,
-`docs/19-production-config-template.md`, `docs/20-go-live-runbook.md`, and
-`docs/21-production-deployment-plan.md`,
+config mapping, Gate 1 input templates, go-live runbook, production deployment
+plan, and app-level HTTP server timeout configuration added on 2026-07-10.
+Details are recorded in `docs/18-production-security-compliance-checklist.md`,
+`docs/19-production-config-template.md`, `docs/20-go-live-runbook.md`,
+`docs/21-production-deployment-plan.md`, and
 `docs/22-production-config-mapping.md`.
 
 Goal: make production launch blockers explicit before live traffic or payments.
@@ -382,6 +382,8 @@ Tasks:
 - Document the default production deployment topology and build/run strategy.
 - Document how Compose env values map to backend `config.yml`, frontend build
   variables, and post-boot admin settings.
+- Add Gate 1 input templates for `site_config`, user frontend env, and admin
+  frontend env.
 
 Success criteria:
 
@@ -407,5 +409,9 @@ Completed verification:
   `docs/21-production-deployment-plan.md`.
 - Production config mapping is documented in
   `docs/22-production-config-mapping.md`.
+- Gate 1 input templates are available under `ops/gate1/`.
+- Prelaunch audit now treats `CHANGE_ME` and `FINAL_*` placeholders as
+  launch-blocking failures in backend config, `site_config`, and frontend env
+  files.
 - Targeted tests passed:
   - `cd dujiao-next && GOCACHE=/Users/river/FansProject/dujiao-next/.gocache GOMODCACHE=/Users/river/FansProject/dujiao-next/.gomodcache go test ./internal/app ./internal/config`

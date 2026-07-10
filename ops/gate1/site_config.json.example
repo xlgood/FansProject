@@ -1,0 +1,45 @@
+{
+  "currency": "USD",
+  "brand": {
+    "site_name": "FINAL_SITE_NAME",
+    "site_url": "https://FINAL_DOMAIN",
+    "site_icon": "/uploads/brand/favicon.png",
+    "site_description": {
+      "zh-CN": "一站式社媒增长与账号服务平台。",
+      "zh-TW": "一站式社媒成長與帳號服務平台。",
+      "en-US": "One storefront for social growth and account services."
+    }
+  },
+  "seo": {
+    "title": {
+      "zh-CN": "FINAL_SITE_NAME",
+      "zh-TW": "FINAL_SITE_NAME",
+      "en-US": "FINAL_SITE_NAME"
+    },
+    "keywords": {
+      "zh-CN": "社媒增长,账号服务",
+      "zh-TW": "社媒成長,帳號服務",
+      "en-US": "social growth,account services"
+    },
+    "description": {
+      "zh-CN": "购买社媒增长服务与账号服务。",
+      "zh-TW": "購買社媒成長服務與帳號服務。",
+      "en-US": "Buy social growth services and account services."
+    },
+    "default_og_image": "/uploads/brand/og-default.png"
+  },
+  "contact": {
+    "email": "FINAL_SUPPORT_EMAIL",
+    "telegram": "",
+    "whatsapp": ""
+  },
+  "footer_links": [],
+  "nav_config": {
+    "builtin": {
+      "blog": true,
+      "notice": true,
+      "about": true
+    },
+    "custom_items": []
+  }
+}

@@ -175,6 +175,12 @@ check_site_config() {
     return
   fi
 
+  if grep -Eq 'CHANGE_ME|FINAL_[A-Z_]*' "$file"; then
+    fail "site_config contains template placeholders"
+  else
+    pass "site_config has no template placeholders"
+  fi
+
   if grep -Eq '"currency"[[:space:]]*:[[:space:]]*"USD"' "$file"; then
     pass "site_config currency is USD"
   else
@@ -204,6 +210,12 @@ check_frontend_env() {
   if [ ! -f "$file" ]; then
     fail "$label env file not found: $file"
     return
+  fi
+
+  if grep -Eq 'CHANGE_ME|FINAL_[A-Z_]*' "$file"; then
+    fail "$label env contains template placeholders"
+  else
+    pass "$label env has no template placeholders"
   fi
 
   api_base="$(awk -F= '/^[[:space:]]*VITE_API_BASE_URL[[:space:]]*=/{print $2; exit}' "$file" | sed 's/^[[:space:]"'\'']*//; s/[[:space:]"'\'']*$//')"

@@ -37,6 +37,15 @@ frontend wording that may expose provider/API/procurement internals.
 Template placeholders such as `CHANGE_ME` and `FINAL_*` are treated as
 launch-blocking failures in backend config files.
 
+Gate 1 input templates live in `ops/gate1/`:
+
+- `site_config.json.example`
+- `user.env.production.example`
+- `admin.env.production.example`
+
+They intentionally contain placeholders. Copy them outside the repository and
+replace all placeholders before using them as audit inputs.
+
 ## Compose Template
 
 Separated deployment scaffolding lives in `ops/compose/`:
