@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!ops/compose/.env.production.example
 
 # Dependencies
 node_modules/

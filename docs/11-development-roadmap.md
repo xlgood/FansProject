@@ -428,5 +428,7 @@ Completed verification:
   `docs/24-operations-runbook.md`.
 - Final launch acceptance checklist is documented in
   `docs/25-launch-acceptance-checklist.md`.
+- Final project audit and production handoff state are documented in
+  `docs/26-final-project-audit.md`.
 - Targeted tests passed:
   - `cd dujiao-next && GOCACHE=/Users/river/FansProject/dujiao-next/.gocache GOMODCACHE=/Users/river/FansProject/dujiao-next/.gomodcache go test ./internal/app ./internal/config`
