@@ -372,6 +372,8 @@ Tasks:
 - Document production config placeholders for release mode, CORS, final
   domains, payment callbacks, Redis/queue, secrets, USD site currency, and
   provider operating switches.
+- Add a read-only prelaunch audit for production config, frontend env, and
+  public wording checks.
 
 Success criteria:
 
@@ -390,5 +392,7 @@ Completed verification:
   defaults.
 - Production configuration template is documented in
   `docs/19-production-config-template.md`.
+- Read-only production prelaunch audit script is available at
+  `ops/prelaunch-audit.sh`.
 - Targeted tests passed:
   - `cd dujiao-next && GOCACHE=/Users/river/FansProject/dujiao-next/.gocache GOMODCACHE=/Users/river/FansProject/dujiao-next/.gomodcache go test ./internal/app ./internal/config`
