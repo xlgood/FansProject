@@ -246,6 +246,10 @@ bash ops/prelaunch-audit.sh \
 
 Deployment is blocked unless the audit reports `0` failures.
 
+Prepare the production or staging host with
+`docs/29-production-environment-checklist.md` before building images on that
+host.
+
 After deployment, continue with `docs/20-go-live-runbook.md`.
 
 ## Compose Template

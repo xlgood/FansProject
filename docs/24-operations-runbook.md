@@ -15,6 +15,8 @@ deployment:
 - rollback and incident response.
 
 It assumes the topology from `docs/21-production-deployment-plan.md`.
+Use `docs/29-production-environment-checklist.md` for first-time host setup
+before applying this day-to-day operations runbook.
 
 ## Paths And Inputs
 
