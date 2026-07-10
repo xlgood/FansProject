@@ -49,6 +49,7 @@
 - `docs/22-production-config-mapping.md`：Compose env、后端 `config.yml` 和后台设置的生产映射说明。
 - `docs/23-reverse-proxy-cdn.md`：Nginx/CDN 反向代理、安全头、上传限制和国家 header 模板说明。
 - `docs/24-operations-runbook.md`：生产运维操作手册，含启停、日志、禁用、回滚和事故处理。
+- `docs/25-launch-acceptance-checklist.md`：上线前人工验收与最终 sign-off 清单。
 - `ops/compose/docker-compose.production.yml`：最小三服务分离部署 Compose 模板。
 - `ops/gate1/`：Gate 1 审计输入模板，含 `site_config` 和前后台生产 env 示例。
 

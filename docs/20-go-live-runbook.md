@@ -28,6 +28,7 @@ gates:
 - Production config mapping from `docs/22-production-config-mapping.md`.
 - Reverse proxy/CDN plan from `docs/23-reverse-proxy-cdn.md`.
 - Operations runbook from `docs/24-operations-runbook.md`.
+- Final acceptance checklist from `docs/25-launch-acceptance-checklist.md`.
 
 Input templates:
 
@@ -193,6 +194,8 @@ Launch can proceed only when:
   - rotate provider/payment/JWT/SMTP secrets;
   - roll back frontend and backend versions.
   Operational procedures are documented in `docs/24-operations-runbook.md`.
+- Final human acceptance is recorded in
+  `docs/25-launch-acceptance-checklist.md`.
 
 ## Post-Launch
 

@@ -353,13 +353,14 @@ Remaining implementation:
 
 Status: launch security checklist, production config template, production
 config mapping, Gate 1 input templates, reverse proxy/CDN template, operations
-runbook, go-live runbook, production deployment plan, and app-level HTTP server
-timeout configuration added on 2026-07-10.
+runbook, launch acceptance checklist, go-live runbook, production deployment
+plan, and app-level HTTP server timeout configuration added on 2026-07-10.
 Details are recorded in `docs/18-production-security-compliance-checklist.md`,
 `docs/19-production-config-template.md`, `docs/20-go-live-runbook.md`,
 `docs/21-production-deployment-plan.md`, and
 `docs/22-production-config-mapping.md`,
-`docs/23-reverse-proxy-cdn.md`, and `docs/24-operations-runbook.md`.
+`docs/23-reverse-proxy-cdn.md`, `docs/24-operations-runbook.md`, and
+`docs/25-launch-acceptance-checklist.md`.
 
 Goal: make production launch blockers explicit before live traffic or payments.
 
@@ -390,6 +391,8 @@ Tasks:
   routing.
 - Add production operations runbook for deploy, health checks, logs, rollback,
   and incident response.
+- Add final launch acceptance checklist for payment, provider, language, SEO,
+  brand, public wording, admin access, rollback, and sign-off.
 
 Success criteria:
 
@@ -423,5 +426,7 @@ Completed verification:
   `docs/23-reverse-proxy-cdn.md` and `ops/nginx/`.
 - Production operations procedures are documented in
   `docs/24-operations-runbook.md`.
+- Final launch acceptance checklist is documented in
+  `docs/25-launch-acceptance-checklist.md`.
 - Targeted tests passed:
   - `cd dujiao-next && GOCACHE=/Users/river/FansProject/dujiao-next/.gocache GOMODCACHE=/Users/river/FansProject/dujiao-next/.gomodcache go test ./internal/app ./internal/config`
