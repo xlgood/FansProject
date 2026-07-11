@@ -4,7 +4,8 @@
 
 app:
   secret_key: CHANGE_ME_APP_SECRET_32_BYTES_MIN
-  totp_issuer: FINAL_SITE_NAME
+  # Public brand: Social Gurus Hub. Keep the domain/technical identifier lowercase.
+  totp_issuer: Social Gurus Hub
 
 server:
   host: 0.0.0.0
@@ -136,7 +137,7 @@ email:
   username: ""
   password: ""
   from: FINAL_SUPPORT_EMAIL
-  from_name: FINAL_SITE_NAME
+  from_name: Social Gurus Hub
   use_tls: false
   use_ssl: true
   verify_code:

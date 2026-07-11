@@ -141,6 +141,9 @@ UPLOADS_PATH=/var/lib/target-site/uploads
 LOGS_PATH=/var/lib/target-site/logs
 POSTGRES_DATA_PATH=/var/lib/target-site/postgres
 REDIS_DATA_PATH=/var/lib/target-site/redis
+API_BUILD_CONTEXT=/srv/target-site/dujiao-next
+USER_BUILD_CONTEXT=/srv/target-site/user
+ADMIN_BUILD_CONTEXT=/srv/target-site/admin
 ```
 
 Create data directories:
@@ -184,6 +187,8 @@ Pass criteria:
 - API/user/admin host ports bind to `127.0.0.1`;
 - backend config mounts `/etc/target-site/config.yml`;
 - persistent paths point at `/var/lib/target-site/...` or approved alternatives.
+- API, user, and admin build contexts point at the three corresponding source
+  checkouts under `/srv/target-site/`.
 
 You can run the combined runtime dry-run from `/srv/target-site/FansProject`:
 

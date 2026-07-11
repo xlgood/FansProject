@@ -28,7 +28,7 @@ services:
 
   api:
     build:
-      context: ../../dujiao-next
+      context: ${API_BUILD_CONTEXT}
       dockerfile: Dockerfile
       args:
         APP_VERSION: ${APP_VERSION}
@@ -70,7 +70,7 @@ services:
 
   user:
     build:
-      context: ../../user
+      context: ${USER_BUILD_CONTEXT}
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL}
@@ -86,7 +86,7 @@ services:
 
   admin:
     build:
-      context: ../../admin
+      context: ${ADMIN_BUILD_CONTEXT}
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL}

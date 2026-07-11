@@ -110,6 +110,17 @@ check_path_value LOGS_PATH /var/lib/target-site
 check_path_value POSTGRES_DATA_PATH /var/lib/target-site
 check_path_value REDIS_DATA_PATH /var/lib/target-site
 
+for key in API_BUILD_CONTEXT USER_BUILD_CONTEXT ADMIN_BUILD_CONTEXT; do
+  value="$(env_value "$key" "$compose_env")"
+  if [ -d "$value" ]; then
+    pass "$key build context exists"
+  elif [ -n "$value" ]; then
+    fail "$key build context does not exist: $value"
+  else
+    fail "$key is missing from compose.env"
+  fi
+done
+
 if grep -nE 'CHANGE_ME|=(https://)?FINAL_[A-Z_]*|=FINAL_[A-Z_]*' "$compose_env" >/dev/null 2>&1 ||
   sed '/^[[:space:]]*#/d' "$nginx_dir/target-site.conf" "$nginx_dir/target-proxy-headers.conf" |
     grep -E 'CHANGE_ME|FINAL_[A-Z_]*|https://FINAL' >/dev/null 2>&1; then
