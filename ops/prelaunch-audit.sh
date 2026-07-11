@@ -7,6 +7,8 @@ site_config=""
 user_env=""
 admin_env=""
 scan_public_text=1
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+project_dir="$(cd "$script_dir/.." && pwd)"
 
 usage() {
   cat <<'USAGE'
@@ -240,12 +242,16 @@ check_public_text() {
   if [ "$scan_public_text" -ne 1 ]; then
     return
   fi
-  if [ ! -d "user/src/i18n" ]; then
-    warn "user/src not found; cannot scan public frontend text"
+  user_source_dir="${USER_SOURCE_DIR:-$project_dir/user}"
+  if [ ! -d "$user_source_dir/src/i18n" ] && [ -d "$project_dir/../user/src/i18n" ]; then
+    user_source_dir="$project_dir/../user"
+  fi
+  if [ ! -d "$user_source_dir/src/i18n" ]; then
+    warn "user frontend source not found; set USER_SOURCE_DIR to scan public frontend text"
     return
   fi
 
-  matches="$(grep -RInE 'FansGurus|TGX|upstream|procurement|provider page|provider API|API routing' user/src/i18n --include='*.ts' --include='*.json' 2>/dev/null || true)"
+  matches="$(grep -RInE 'FansGurus|TGX|upstream|procurement|provider page|provider API|API routing' "$user_source_dir/src/i18n" --include='*.ts' --include='*.json' 2>/dev/null || true)"
   if [ -n "$matches" ]; then
     warn "public frontend contains terms that may expose internals; review these lines:"
     printf '%s\n' "$matches" | sed 's/^/  /'
