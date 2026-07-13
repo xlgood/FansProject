@@ -65,8 +65,12 @@ target_price = fansgurus.rate * 5
 TGX:
 
 ```text
-target_price = tgx.price * 1.2
+target_price_usd = tgx.price_cny * tgx_connection.exchange_rate * (1 + markup_percent / 100)
 ```
+
+TGX `price` is CNY. Configure the TGX connection's exchange rate as CNY-to-USD
+(for example `0.14`) before catalog synchronization. Store raw upstream prices
+as CNY for reconciliation; the storefront and payment settlement remain USD.
 
 TGX base field is confirmed as `price`.
 

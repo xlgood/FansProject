@@ -172,7 +172,8 @@ Files:
 Existing connection markup can represent both requested multipliers:
 
 - FansGurus: `price_markup_percent = 400` gives upstream * 5
-- TGX: `price_markup_percent = 20` gives upstream * 1.2
+- TGX: configure CNY-to-USD `exchange_rate` first, then
+  `price_markup_percent = 20` gives converted upstream price * 1.2
 
 FansGurus `rate` is per 1000 units. Do not normalize it to a one-unit price.
 The adapter and product import must preserve the upstream quantity basis, so the

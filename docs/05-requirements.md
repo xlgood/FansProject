@@ -67,14 +67,15 @@ target_price = upstream_rate * 5
 TGX:
 
 ```text
-target_price = upstream.price * 1.2
+target_price_usd = upstream.price_cny * tgx_connection.exchange_rate * 1.2
 ```
 
 Rules:
 
 - decimal math only;
 - display and settlement currency is USD;
-- do not perform automatic exchange-rate conversion between upstream providers during catalog sync;
+- FansGurus prices are USD; TGX prices are CNY and must use the configured
+  CNY-to-USD connection exchange rate during catalog sync;
 - round according to USD site currency policy;
 - persist multiplier used at order time;
 - expose upstream cost and margin in admin only, not public UI.

@@ -98,7 +98,7 @@ Source: `https://www.tgxaccount.com/user/docs/api`
 - Exclude any TGX SKU where normalized text contains Telegram-related terms.
 - Keep only SKUs whose normalized platform is in the cross-provider platform intersection.
 - Target price = TGX `price` * 1.2.
-- Currency policy: TGX commodity APIs expose price-like numeric fields but do not provide a reliable per-response currency field. The target site will treat synchronized TGX prices as USD for display and settlement unless a later account-specific TGX document proves otherwise.
+- Currency policy: TGX commodity prices are CNY. Convert them to the site's USD currency with the TGX connection's configured CNY-to-USD exchange rate, then apply its markup. Preserve the raw TGX price as the CNY upstream amount for admin reconciliation.
 - Use `request_no` as idempotency key for purchases.
 - Automatic TGX delivery should store returned `secret` into Dujiao-Next delivery payload.
 - Manual TGX delivery should poll `/shared/commodity/query`.
