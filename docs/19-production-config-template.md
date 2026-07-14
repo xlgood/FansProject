@@ -272,13 +272,13 @@ Configure provider credentials only in backend/admin provider settings:
 - FansGurus connection:
   - protocol: `fansgurus`
   - API key: production secret
-  - pricing rule: upstream `rate * 5`
+  - pricing rule: exchange rate `1`, configured markup/rounding, or a manual SKU price
   - quantity basis: preserve upstream per-1000 basis, minimums, and increments
 - TGX connection:
   - protocol: `tgx-account`
   - app ID: production secret
   - app key: production secret
-  - pricing rule: upstream `price * 1.2`
+  - pricing rule: CNY-to-USD exchange rate plus configured markup/rounding, or a manual SKU price
 
 Catalog policy that must remain active:
 
@@ -376,7 +376,7 @@ Pass criteria:
 - CORS allows only final storefront/admin origins.
 - Locale-prefixed pages render in the expected language.
 - Sitemap and canonical links use the final HTTPS domain.
-- Telegram SKUs and non-intersection platforms are absent.
+- Telegram and provider-disallowed SKUs are absent.
 - Checkout succeeds for each enabled payment channel.
 - Paid order fulfillment succeeds through mocked or explicitly approved
   low-value live provider orders.

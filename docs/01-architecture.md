@@ -43,7 +43,7 @@ Dujiao-Next API
   - `tgx_items_sync`;
   - platform normalization;
   - Telegram exclusion;
-  - intersection calculation.
+  - provider-specific allowlist evaluation.
 - Unified catalog:
   - platform;
   - provider;
@@ -71,9 +71,9 @@ Dujiao-Next API
 1. Scheduled jobs pull FansGurus and TGX catalogs.
 2. Each provider adapter stores raw payloads and normalized provider SKUs.
 3. A normalization job extracts platform names and removes Telegram-related SKUs.
-4. The system computes the supported platform intersection.
-5. Only SKUs belonging to supported intersection platforms become storefront-visible.
-6. Pricing job calculates provider-specific target prices.
+4. The system applies each provider's explicit allowlist after Telegram exclusion.
+5. Only active, provider-allowed SKUs become storefront-visible.
+6. Connection price settings calculate local USD prices; manual SKU prices can be retained.
 7. Customer creates a local Dujiao-Next order and pays locally.
 8. Payment callback marks the local order paid.
 9. Queue worker sends the fulfillment request to FansGurus or TGX.

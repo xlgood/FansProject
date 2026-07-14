@@ -204,9 +204,9 @@ Only run live provider submission with explicit approval and low-value orders.
 Pass criteria:
 
 - Telegram SKUs are absent.
-- Non-intersection platforms are absent.
-- FansGurus pricing preserves upstream quantity basis and applies `rate * 5`.
-- TGX pricing applies `price * 1.2`.
+- Provider-disallowed platforms are absent.
+- FansGurus pricing preserves its upstream quantity basis and follows connection settings.
+- TGX pricing converts CNY to USD and follows connection settings.
 - Paid order creates procurement once.
 - Provider completion updates the local order to delivered.
 - TGX account secrets are visible only to the buyer and authorized admins.

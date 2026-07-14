@@ -46,7 +46,7 @@ IP detection should redirect only first-time non-prefixed entry requests. It mus
 ## Page Groups
 
 - Home page.
-- Platform landing pages, only for supported intersection platforms.
+- Platform landing pages, only for active platforms with provider-allowed SKUs.
 - Service intent pages:
   - buy followers;
   - buy likes;
@@ -62,7 +62,7 @@ IP detection should redirect only first-time non-prefixed entry requests. It mus
 
 GEO pages may target language or region intent, but they must remain true to available inventory:
 
-- do not create platform pages for non-intersection platforms;
+- do not create platform pages for platforms with no active provider-allowed SKUs;
 - do not create Telegram pages;
 - do not imply guaranteed third-party platform outcomes unless upstream explicitly guarantees them;
 - disclose delivery method, refill/cancel support, and after-sales scope per SKU where available.

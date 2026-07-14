@@ -249,7 +249,7 @@ Watch:
 - provider submission failures;
 - duplicate fulfillment attempts;
 - accepted-order sync failures;
-- unexpected Telegram/non-intersection catalog exposure;
+- unexpected Telegram/provider-disallowed catalog exposure;
 - logs containing secrets or delivery data.
 
 ## Rollback Decision Matrix
@@ -338,6 +338,6 @@ Within 24 hours:
 3. Review customer support messages.
 4. Confirm backups are scheduled.
 5. Confirm no placeholder domains remain in public pages.
-6. Confirm no Telegram or non-intersection SKUs appear in sitemap/catalog.
+6. Confirm no Telegram or provider-disallowed SKUs appear in sitemap/catalog.
 7. Record final launch approval and any deferred risks.
 8. Re-run Gate 1 after any domain, config, payment, or provider change.

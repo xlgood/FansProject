@@ -26,7 +26,7 @@ This project follows the local `karpathy-guidelines` skill.
 ## Money Rules
 
 - No binary floating point for prices, charges, or costs.
-- Store upstream cost, multiplier, final price, currency, and rounding result.
+- Store upstream cost, exchange rate, markup, final price, currency, and rounding result.
 - Lock order amount at checkout.
 
 ## Internationalization Rules
@@ -42,7 +42,7 @@ This project follows the local `karpathy-guidelines` skill.
 - Does it expose secrets?
 - Can paid fulfillment be retried safely?
 - Are Telegram SKUs excluded?
-- Does the SKU belong to the platform intersection?
-- Are prices calculated with the right multiplier?
+- Does the SKU belong to its provider's allowlist?
+- Are prices calculated with the connection's current pricing settings?
 - Are unsupported service types blocked from purchase?
 - Are tests or manual verification steps included?

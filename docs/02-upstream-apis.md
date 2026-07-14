@@ -45,8 +45,12 @@ Source: `https://fansgurus.com/zh/api`
 ### Target Rules
 
 - Exclude any FansGurus SKU where normalized text contains Telegram-related terms.
-- Keep only SKUs whose normalized platform is in the cross-provider platform intersection.
-- Target price = `rate * 5`.
+- Keep only the FansGurus allowlist: X, Instagram, Facebook, TikTok, YouTube,
+  VK, Spotify, Discord, Twitch, Reddit, LinkedIn, GitHub, Quora, WhatsApp,
+  Line Voom, and Threads.
+- FansGurus upstream amounts are USD. Local sale price is controlled by the
+  connection's configurable exchange rate, markup, rounding, and optional
+  manual SKU price; no fixed multiplier is applied.
 - Currency policy: treat FansGurus upstream amounts as USD. FansGurus balance/order responses expose `currency` as `USD`.
 - Upstream order creation must happen after local payment success.
 - Store FansGurus order ID and poll `status`.
@@ -96,8 +100,12 @@ Source: `https://www.tgxaccount.com/user/docs/api`
 ### Target Rules
 
 - Exclude any TGX SKU where normalized text contains Telegram-related terms.
-- Keep only SKUs whose normalized platform is in the cross-provider platform intersection.
-- Target price = TGX `price` * 1.2.
+- Keep only the TGX allowlist: X, Facebook, Instagram, YouTube, TikTok,
+  Google/Gmail, Threads, LinkedIn, GitHub, Reddit, Discord, Outlook/Hotmail,
+  and overseas email.
+- TGX local sale price is controlled by its configured CNY-to-USD exchange
+  rate, markup, rounding, and optional manual SKU price; no fixed multiplier
+  is applied.
 - Currency policy: TGX commodity prices are CNY. Convert them to the site's USD currency with the TGX connection's configured CNY-to-USD exchange rate, then apply its markup. Preserve the raw TGX price as the CNY upstream amount for admin reconciliation.
 - Use `request_no` as idempotency key for purchases.
 - Automatic TGX delivery should store returned `secret` into Dujiao-Next delivery payload.

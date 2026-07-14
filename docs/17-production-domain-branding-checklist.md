@@ -205,6 +205,6 @@ Do not launch if any of these are true:
 - Public pages mention upstream providers, API routing, or internal
   procurement wording.
 - Telegram SKUs are visible in catalog or navigation.
-- Sitemap publishes non-intersection platform pages.
+- Sitemap publishes provider-disallowed platform pages.
 - Locale URL variants return `404` or render the wrong language.
 - Payment channel branding still shows placeholder merchant information.

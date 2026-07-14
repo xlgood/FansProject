@@ -40,14 +40,14 @@
 - Store raw payloads.
 - Normalize platforms.
 - Exclude Telegram.
-- Compute intersection.
+- Apply each provider's explicit allowlist.
 - Publish active SKUs.
 
 ## Step 5: Add Pricing
 
-- FansGurus multiplier `5`.
-- TGX multiplier `1.2`.
-- Admin-visible upstream cost and target price.
+- Use each connection's exchange rate, markup, and rounding settings.
+- Preserve manual SKU prices when automatic price sync is disabled.
+- Admin-visible upstream cost and local sale price.
 - Locked order price snapshots.
 
 ## Step 6: Add Fulfillment
@@ -63,7 +63,7 @@
 - IP-based first-visit default.
 - Manual language cookie/profile setting.
 - `hreflang` and sitemap.
-- Platform and intent pages based only on active intersection platforms.
+- Platform and intent pages based only on active, provider-allowed platforms.
 
 ## Step 8: Test
 

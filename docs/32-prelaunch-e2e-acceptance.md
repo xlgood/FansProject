@@ -59,12 +59,12 @@ Pass criteria:
 - public pages return `200`;
 - products and SKUs load without login;
 - no Telegram product, category, SKU, or search result appears;
-- no non-intersection platform appears;
+- no provider-disallowed platform appears;
 - displayed currency is `USD`;
-- FansGurus price reflects upstream `rate * 5`;
+- FansGurus price reflects connection settings or the retained manual price;
 - FansGurus quantity basis, minimums, maximums, and increments match upstream
   scale;
-- TGX price reflects `price * 1.2`;
+- TGX price reflects CNY-to-USD conversion and connection settings or the retained manual price;
 - product copy does not mention provider, upstream, API routing, procurement,
   or manual operator workflow.
 
@@ -237,7 +237,7 @@ Pass criteria:
 - manual language override persists;
 - `html lang`, canonical URL, and `hreflang` are correct;
 - sitemap uses final HTTPS domain;
-- sitemap excludes Telegram and non-intersection platform pages;
+- sitemap excludes Telegram and provider-disallowed platform pages;
 - favicon, logo, and OG image load from final or approved temporary assets;
 - public config returns final brand and `currency: "USD"`.
 
@@ -275,7 +275,7 @@ Do not launch if any item is true:
 
 - guests can create orders, create payments, or query orders without login;
 - checkout works while logged out;
-- Telegram or non-intersection SKUs appear publicly;
+- Telegram or provider-disallowed SKUs appear publicly;
 - any enabled payment channel fails callback/webhook verification;
 - one paid order can create duplicate provider submissions;
 - TGX account secret is visible to the wrong user;

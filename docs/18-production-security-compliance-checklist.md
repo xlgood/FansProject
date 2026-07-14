@@ -57,7 +57,7 @@ These must be completed before any public production launch:
   - procurement internals
   - manual operator workflows
 - Verify Telegram SKUs remain excluded from public catalog and sitemap.
-- Verify non-intersection platforms are not published.
+- Verify provider-disallowed platforms are not published.
 - Review configured Go `http.Server` production limits before direct internet
   exposure:
   - `ReadHeaderTimeout`

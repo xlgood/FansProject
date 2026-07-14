@@ -50,7 +50,8 @@ FansGurus:
 - Store raw services.
 - Normalize platform.
 - Apply Telegram filter.
-- Calculate price multiplier.
+- Apply the FansGurus allowlist.
+- Calculate price from the connection's exchange-rate, markup, and rounding settings.
 
 TGX:
 
@@ -60,15 +61,9 @@ TGX:
 - Parse `widget`.
 - Normalize platform.
 - Apply Telegram filter.
-- Calculate price multiplier.
-  - base field: `price`;
-  - multiplier: `1.2`.
-
-Intersection:
-
-- compute after both provider syncs complete;
-- publish only intersection platform SKUs;
-- store reason when SKU is hidden.
+- Apply the TGX allowlist.
+- Convert its `price` from CNY to USD with the connection exchange rate, then
+  apply the connection markup and rounding settings.
 
 Currency:
 
@@ -81,7 +76,7 @@ Currency:
 
 Use Dujiao-Next user frontend as the base:
 
-- add platform navigation based on supported intersection;
+- add platform navigation based on active, provider-allowed SKUs;
 - show two service groups per platform: fan/growth and account products;
 - render provider-specific form fields through normalized schema;
 - hide unsupported SKUs from purchase;
@@ -104,10 +99,10 @@ Add admin screens or extend existing ones:
 - provider settings;
 - sync dashboard;
 - SKU mapping and filters;
-- platform intersection;
+- provider allowlist outcomes;
 - provider order status;
 - retry tools;
-- pricing/multiplier visibility.
+- pricing, exchange-rate, rounding, and automatic-price-sync visibility.
 
 ## Phase 7: Verification
 

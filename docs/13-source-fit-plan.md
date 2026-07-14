@@ -65,8 +65,8 @@ FansGurus API shape:
 - API key field: `key`
 - Actions include `services`, `add`, `status`, `balance`
 - Balance response includes USD currency
-- `rate` is price per 1000 units. Keep this upstream quantity basis unchanged:
-  local displayed price should be `rate * 5` per 1000 units, not `rate / 1000`.
+- `rate` is price per 1000 units. Keep this upstream quantity basis unchanged;
+  calculate the local USD price using the connection's configured pricing rules.
   Preserve upstream min/max quantity and quantity-step semantics.
 
 TGX adapter maps:
@@ -146,9 +146,8 @@ Normalization rules:
 
 - Exclude any upstream product/SKU where normalized title, platform, category,
   tags, code, or description contains Telegram-related terms.
-- Compute allowed platform intersection across FansGurus and TGX after Telegram
-  filtering.
-- Only import active products whose platform is in the intersection.
+- Apply the FansGurus and TGX allowlists separately after Telegram filtering.
+- Only import active products whose platform is allowed for that provider.
 - Store platform as a tag and/or a structured value in SEO/meta JSON until a
   dedicated platform field is added.
 
@@ -169,11 +168,11 @@ Files:
 - `dujiao-next/internal/service/product_mapping_markup.go`
 - `dujiao-next/internal/service/price_markup.go`
 
-Existing connection markup can represent both requested multipliers:
+Existing connection pricing supports the required administrator controls:
 
-- FansGurus: `price_markup_percent = 400` gives upstream * 5
-- TGX: configure CNY-to-USD `exchange_rate` first, then
-  `price_markup_percent = 20` gives converted upstream price * 1.2
+- FansGurus: use an exchange rate of `1`, then configure markup and rounding.
+- TGX: configure the CNY-to-USD `exchange_rate`, then configure markup and
+  rounding. Disable automatic price sync to retain a manually set SKU price.
 
 FansGurus `rate` is per 1000 units. Do not normalize it to a one-unit price.
 The adapter and product import must preserve the upstream quantity basis, so the
@@ -280,8 +279,7 @@ Files:
 
 Minimum user changes:
 
-- Platform navigation should be generated from the filtered intersection
-  catalog.
+- Platform navigation should be generated from active, provider-allowed SKUs.
 - Hide all Telegram content and routes.
 - Render Dujiao manual form schema for FansGurus link input and TGX widget
   fields.
@@ -299,8 +297,8 @@ Minimum user changes:
 - TGX docs show prices in examples without explicit currency. Unless a live
   response proves otherwise, target settlement should remain USD by platform
   rule.
-- Platform intersection requires both catalogs. Do not hard-code the final
-  platform list before live catalog fetch.
+- Provider allowlists are explicit business policy. Do not infer an allowlist
+  from the other provider's current catalog.
 - Existing Telegram login/bot code remains in Dujiao-Next. The target website
   must hide Telegram products/services, but removing Telegram auth/bot internals
   is a separate hardening step if required.
@@ -310,12 +308,12 @@ Minimum user changes:
 Backend tests:
 
 - FansGurus client request construction and response parsing.
-- FansGurus per-1000 price preservation and 5x multiplier.
+- FansGurus per-1000 price preservation and connection pricing.
 - TGX signer against documented examples.
 - TGX client request construction with string fields and widget params.
 - Product import creates local product/SKU/mapping records.
 - Telegram filter rejects product, SKU, category, tag, and description matches.
-- Platform intersection hides non-shared platforms.
+- Provider allowlists hide disallowed platforms.
 - Procurement submit is idempotent and stores upstream order code.
 - Procurement poll maps delivered, pending, canceled, and failed statuses.
 
@@ -323,7 +321,7 @@ Frontend checks:
 
 - Site connection protocol selector includes all three protocols.
 - Product list contains no Telegram entries.
-- Platform navigation only shows intersection platforms.
+- Platform navigation only shows active provider-allowed platforms.
 - TGX race SKUs and widget fields render correctly.
 - FansGurus target URL input is required before checkout.
 

@@ -9,7 +9,8 @@ Customers should see a unified marketplace by platform. For each supported platf
 - fan/growth services from FansGurus;
 - account products from TGX.
 
-Only platforms available from both providers after Telegram exclusion are visible.
+Each provider has its own explicit platform allowlist after Telegram exclusion;
+the catalogs are not intersected.
 
 ## 2. Roles
 
@@ -40,8 +41,8 @@ Admin:
 - Store raw upstream payloads.
 - Normalize platforms.
 - Exclude Telegram-related SKUs.
-- Compute platform intersection.
-- Publish only intersection platform SKUs.
+- Apply independent FansGurus and TGX platform allowlists.
+- Publish only SKUs allowed for their own provider.
 - Keep provider-specific upstream identifiers:
   - FansGurus `service`;
   - TGX `code`.
@@ -53,22 +54,10 @@ Acceptance:
 
 - A sync can populate both provider catalogs.
 - Telegram SKUs are absent from storefront navigation, search, sitemap, and checkout.
-- YouTube appears only if TGX also has YouTube and FansGurus has YouTube after filtering.
-- Price calculations match configured multipliers.
+- A platform may appear from one upstream only when it is in that upstream's allowlist.
+- Price calculations match the current connection configuration or the retained manual SKU price.
 
 ## 4. Pricing Requirements
-
-FansGurus:
-
-```text
-target_price = upstream_rate * 5
-```
-
-TGX:
-
-```text
-target_price_usd = upstream.price_cny * tgx_connection.exchange_rate * 1.2
-```
 
 Rules:
 
@@ -77,13 +66,13 @@ Rules:
 - FansGurus prices are USD; TGX prices are CNY and must use the configured
   CNY-to-USD connection exchange rate during catalog sync;
 - round according to USD site currency policy;
-- persist multiplier used at order time;
+- persist the charged amount at order time;
 - expose upstream cost and margin in admin only, not public UI.
 
 Acceptance:
 
-- FansGurus rate `2.00` displays as `10.00`.
-- TGX base price `100.00` displays as `120.00`.
+- Administrators can change markup/rounding and explicitly reapply it to mapped SKUs.
+- Administrators can disable automatic price sync and keep a per-SKU USD price.
 - Existing orders keep the original charged amount after upstream price changes.
 
 ## 4.1 Payment Requirements

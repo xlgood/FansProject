@@ -43,7 +43,7 @@ Completed deliverables in the root repository:
 Completed deliverables in cloned source worktrees include:
 
 - FansGurus and TGX provider clients;
-- catalog sync, Telegram exclusion, platform intersection, and price rules;
+- catalog sync, Telegram exclusion, provider allowlists, and price rules;
 - admin manual catalog sync;
 - order fulfillment submission, polling, retry-safe behavior, and user-safe
   public error wording;
@@ -58,13 +58,12 @@ Completed deliverables in cloned source worktrees include:
 
 The implementation and documentation preserve the confirmed project rules:
 
-- FansGurus prices use upstream `rate * 5`.
+- FansGurus prices use its connection's exchange rate, markup, and rounding settings.
 - FansGurus quantity basis, minimum quantity, and order increments stay aligned
   with the upstream per-1000 model.
-- TGX prices use upstream `price * 1.2`.
+- TGX prices convert upstream CNY with its configured exchange rate, markup, and rounding settings.
 - Telegram-related SKUs are excluded.
-- Public catalog visibility is limited to the platform intersection between
-  FansGurus and TGX.
+- Public catalog visibility is limited to each provider's explicit allowlist.
 - Target site currency is USD unless a payment channel performs its own
   gateway conversion.
 - Public storefront copy must not expose provider, upstream, API routing, or

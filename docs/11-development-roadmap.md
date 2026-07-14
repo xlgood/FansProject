@@ -67,9 +67,9 @@ Verification:
 
 - `dujiao-next/internal/upstream` now has isolated FansGurus and TGX clients.
 - FansGurus tests cover `services`, `balance`, `add`, `status`, error redaction,
-  and `rate * 5` while preserving the upstream per-1000 basis.
+  and service-type payloads while preserving the upstream per-1000 basis.
 - TGX tests cover signing, authentication, items, inventory, inventory state,
-  trade, query, widget form parameters, error redaction, and `price * 1.2`.
+  trade, query, widget form parameters, error redaction, and CNY-to-USD pricing.
 - Targeted test passed: `go test ./internal/upstream`.
 
 ## Phase 4: SKU Sync And Filtering
@@ -83,23 +83,21 @@ Tasks:
 - Store raw FansGurus and TGX catalog payloads.
 - Normalize platforms.
 - Exclude Telegram-related SKUs.
-- Compute cross-provider platform intersection.
-- Apply pricing:
-  - FansGurus: upstream rate * 5, preserving the upstream per-1000 quantity basis.
-  - TGX: `price` * 1.2.
+- Apply each provider's independent platform allowlist.
+- Apply connection-configured exchange rate, markup, and rounding; preserve
+  manually set SKU prices when automatic price sync is disabled.
 - Map active SKUs into Dujiao-Next product/SKU structures.
 
 Success criteria:
 
 - Telegram SKUs are hidden.
-- Non-intersection platforms are hidden.
+- Provider-disallowed platforms are hidden.
 - USD target prices are stored and reproducible.
 
 Completed verification:
 
 - Added a pure catalog policy layer for platform normalization, Telegram
-  exclusion, active-only filtering, cross-provider platform intersection, and
-  provider price helpers.
+  exclusion, active-only filtering, provider allowlists, and connection pricing.
 - Added base database import for filtered provider catalog items into
   Dujiao-Next categories, products, SKUs, product mappings, and SKU mappings.
 - Extended mapping tables with provider/platform/string upstream code fields so
@@ -108,12 +106,12 @@ Completed verification:
 - Added TGX `config` race parsing into multiple SKU variants.
 - Added TGX `widget` conversion into Dujiao manual form schema.
 - Added provider catalog sync orchestration that pulls FansGurus/TGX catalog
-  clients, builds the filtered intersection catalog, and imports by provider
+  clients, builds filtered provider catalogs, and imports by provider
   connection ID.
 - Added provider catalog sync run history with raw upstream payload snapshots
   and summary counts.
 - Added stale mapping deactivation for provider records that disappear or leave
-  the filtered intersection.
+  the configured provider allowlists.
 - Added an admin manual trigger endpoint for provider catalog sync:
   `POST /admin/provider-catalog/sync`.
 - Added RBAC coverage for the manual trigger under the `integration` role.
@@ -121,8 +119,8 @@ Completed verification:
   including provider protocol selection options for `fansgurus` and
   `tgx-account`.
 - Tests cover platform aliases, Telegram English and Chinese tokens, `tg`
-  boundary matching, inactive upstream items, non-intersection filtering, and
-  FansGurus/TGX price rules.
+  boundary matching, inactive upstream items, provider-disallowed filtering, and
+  connection price rules.
 - Targeted tests passed:
   - `go test ./internal/upstream`
   - `go test ./internal/service -run 'Test(SyncProviderCatalog|ImportProviderCatalog)'`
@@ -262,7 +260,7 @@ Goal: make the integrated catalog usable.
 
 Tasks:
 
-- User frontend platform navigation from intersection platforms.
+- User frontend platform navigation from active provider-allowed platforms.
 - Product detail forms from normalized provider schemas.
 - Admin sync dashboard.
 - Admin SKU mapping and disable controls.
@@ -317,7 +315,7 @@ Success criteria:
 
 - Each locale is directly accessible.
 - Placeholder domains and assets are replaceable before launch.
-- No Telegram or non-intersection platform pages are published.
+- No Telegram or provider-disallowed platform pages are published.
 
 Completed verification:
 
@@ -399,7 +397,7 @@ Success criteria:
 - No default secrets or placeholder credentials remain.
 - Live payment, provider sync, and order fulfillment can be disabled quickly.
 - Final domain runtime smoke passes.
-- Public users cannot see Telegram SKUs, non-intersection platforms, or
+- Public users cannot see Telegram SKUs, provider-disallowed platforms, or
   internal fulfillment wording.
 
 Completed verification:

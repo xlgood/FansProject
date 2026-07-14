@@ -5,9 +5,8 @@
 - Import FansGurus fan/growth SKUs.
 - Import TGX Account account SKUs.
 - Exclude Telegram-related SKUs.
-- Compute the platform intersection between the two providers.
-- Publish only supported intersection platforms.
-- Apply correct markup per provider.
+- Apply each provider's independent explicit platform allowlist.
+- Preserve manual SKU prices unless the connection's automatic price sync is enabled.
 
 ## Normalization Pipeline
 
@@ -21,11 +20,13 @@
    - `facebook`, `fb` -> `facebook`
    - `youtube`, `yt` -> `youtube`
    - `telegram`, `tg`, `电报`, `飞机` -> `telegram`
-5. Reject Telegram-related records before intersection.
-6. Compute `supported_platforms = fansgurus_platforms ∩ tgx_platforms`.
-7. Hide any SKU whose platform is not in `supported_platforms`.
-8. Calculate target price.
-9. Mark local SKU active only if upstream is active, platform is supported, and purchase form is supported.
+5. Reject Telegram-related records before allowlist matching.
+6. Keep FansGurus records only in its FansGurus allowlist; keep TGX records
+   only in its TGX allowlist. Do not compute a cross-provider intersection.
+7. Hide any SKU not allowed for its provider.
+8. Store upstream cost; apply the connection's current price settings only when
+   automatic price sync is enabled.
+9. Mark local SKU active only if upstream is active, provider-allowed, and its purchase form is supported.
 
 ## Telegram Exclusion
 
@@ -56,21 +57,11 @@ Avoid false positives by applying token boundaries for `tg` in English text, whi
 
 Use decimal arithmetic only.
 
-FansGurus:
-
-```text
-target_price = fansgurus.rate * 5
-```
-
-TGX:
-
-```text
-target_price_usd = tgx.price_cny * tgx_connection.exchange_rate * (1 + markup_percent / 100)
-```
-
-TGX `price` is CNY. Configure the TGX connection's exchange rate as CNY-to-USD
-(for example `0.14`) before catalog synchronization. Store raw upstream prices
-as CNY for reconciliation; the storefront and payment settlement remain USD.
+FansGurus upstream amounts are USD and TGX `price` is CNY. Configure TGX's
+CNY-to-USD exchange rate before synchronization. Store raw upstream prices for
+reconciliation; the storefront and payment settlement remain USD. The
+connection's markup and rounding rules calculate the price only when automatic
+price sync is enabled; otherwise the administrator's per-SKU USD price remains.
 
 TGX base field is confirmed as `price`.
 
@@ -85,9 +76,20 @@ FansGurus:
 TGX:
 
 - Use `/shared/commodity/inventory` for count and pricing details.
+- Refresh all mapped TGX variants on the scheduled stock-sync job with bounded
+  concurrency; use the single-SKU refresh only for diagnostics.
 - Use `/shared/commodity/inventoryState` before purchase when practical.
 - Respect `minimum`.
 - If inventory is hidden, treat product as purchasable only if provider says it is active and inventory checks pass.
+
+## Image Rules
+
+- Do not download or retain per-SKU upstream product images.
+- Every provider SKU uses the one local image assigned to its normalized platform
+  (for example, all X products use the X image and all YouTube products use the
+  YouTube image).
+- Platforms without a dedicated asset use the local generic social image until
+  operations supplies one platform-level replacement.
 
 ## Purchase Form Mapping
 
@@ -116,7 +118,7 @@ Every sync run should persist:
 - updated records;
 - deactivated records;
 - filtered Telegram records;
-- filtered non-intersection records;
+- filtered provider-disallowed records;
 - errors and sample error payloads.
 
 ## Admin Overrides
@@ -126,7 +128,7 @@ Admins need to:
 - force-disable platform/category/SKU;
 - override detected platform;
 - override display title/description per locale;
-- configure provider price multiplier;
+- configure provider exchange rate, markup, rounding, and price-sync mode;
 - inspect raw upstream payload;
 - retry failed sync;
-- manually recalculate intersection.
+- review provider allowlist outcomes.

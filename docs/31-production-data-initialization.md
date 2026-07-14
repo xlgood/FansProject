@@ -181,10 +181,11 @@ Configure provider connections in admin:
 Before first sync:
 
 - confirm Telegram exclusion is enabled by policy;
-- confirm target platform intersection policy is enabled;
-- confirm FansGurus pricing uses upstream `rate * 5` on the original quantity
-  basis;
-- confirm TGX pricing uses `price * 1.2`;
+- confirm independent provider allowlists are enabled;
+- confirm FansGurus pricing uses the connection settings on the original quantity
+  basis or retains approved manual SKU prices;
+- confirm TGX pricing converts CNY to USD and uses the connection settings or
+  retains approved manual SKU prices;
 - keep `worker` stopped or fulfillment disabled while catalog is reviewed.
 
 ## First SKU Sync
@@ -201,9 +202,9 @@ Record the sync result:
 | --- | --- |
 | FansGurus pulled | greater than `0` |
 | TGX pulled | greater than `0` |
-| Supported platforms | intersection of both providers |
+| Supported platforms | union of active provider-allowed platforms |
 | Filtered Telegram | reviewed and greater than or equal to `0` |
-| Filtered non-intersection platforms | reviewed |
+| Filtered provider-disallowed platforms | reviewed |
 | Imported | greater than `0` for launch |
 | Deactivated | reviewed, especially after repeat syncs |
 | Sync status | `success` |
@@ -211,11 +212,11 @@ Record the sync result:
 Catalog review pass criteria:
 
 - no Telegram products or SKUs;
-- no non-intersection platform appears publicly;
-- FansGurus prices reflect `rate * 5`;
+- no provider-disallowed platform appears publicly;
+- FansGurus prices reflect its connection settings or approved manual prices;
 - FansGurus minimums, maximums, and increments preserve the upstream quantity
   basis;
-- TGX prices reflect `price * 1.2`;
+- TGX prices reflect CNY-to-USD conversion and its connection settings or approved manual prices;
 - product titles and descriptions do not expose provider/internal wording;
 - storefront browse works in `zh-CN`, `zh-TW`, and `en`;
 - checkout requires login.
@@ -291,7 +292,7 @@ Do not proceed to live traffic if any item is true:
 - admin 2FA is not enabled;
 - `worker` is running before catalog/payment/provider acceptance;
 - first SKU sync failed or imported zero launchable SKUs;
-- Telegram or non-intersection SKUs appear publicly;
+- Telegram or provider-disallowed SKUs appear publicly;
 - payment channels allow guest payment;
 - production config still references temporary domains;
 - logs expose provider, payment, JWT, SMTP, or account delivery secrets.

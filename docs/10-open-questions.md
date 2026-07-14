@@ -26,7 +26,8 @@ These are the remaining items needed before implementation.
 
 1. Should users be allowed to checkout without registration?
 2. Should account delivery secrets be visible forever, or expire/hide after a period?
-3. Should admin be able to override price multipliers per platform or per SKU?
+3. Which platform aliases require an administrator override when automatic
+   detection is ambiguous?
 4. Should unsupported FansGurus service types be hidden or displayed as unavailable?
 5. Do we need a customer wallet/balance model, or only direct per-order payment?
 6. Which countries/languages are SEO priorities beyond the three UI languages?
@@ -37,6 +38,7 @@ These are the remaining items needed before implementation.
 ## Current Assumptions
 
 - Telegram exclusion applies to both product catalog and customer-facing content.
-- The platform intersection is calculated dynamically from current synced upstream catalogs.
-- Public pages must never advertise platforms or SKUs that are filtered out by the intersection rule.
+- Each provider has its own explicit allowlist; no cross-provider intersection is calculated.
+- Public pages must never advertise Telegram, provider-disallowed, or disabled SKUs.
+- Provider catalog images are local shared platform images, never per-SKU upstream covers.
 - Temporary development domain text can use placeholder domains and must be replaceable before launch.

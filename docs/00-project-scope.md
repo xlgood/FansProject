@@ -16,10 +16,13 @@ The target site should behave as one storefront and admin system. Customers shou
 - Integrate TGX Account shared API for account SKUs.
 - Synchronize upstream SKU lists, prices, inventory/status where available, and local availability.
 - Exclude every SKU that contains Telegram or Telegram-related wording.
-- Only expose platforms present in both upstream catalogs after Telegram exclusion.
-- Apply provider-specific pricing:
-  - FansGurus target price = upstream price * 5.
-  - TGX target price = upstream `price` * 1.2.
+- Use independent provider allowlists after Telegram exclusion:
+  - FansGurus: X, Instagram, Facebook, TikTok, YouTube, VK, Spotify, Discord,
+    Twitch, Reddit, LinkedIn, GitHub, Quora, WhatsApp, Line Voom, Threads.
+  - TGX: X, Facebook, Instagram, YouTube, TikTok, Google/Gmail, Threads,
+    LinkedIn, GitHub, Reddit, Discord, Outlook/Hotmail and overseas email.
+- Calculate local prices from each connection's exchange rate, markup, and
+  rounding configuration. Administrators can keep per-SKU prices manual.
 - Use decimal arithmetic for all money calculations.
 - Preserve upstream raw payloads for audit and troubleshooting.
 - Support Simplified Chinese, Traditional Chinese, and English.
@@ -35,7 +38,7 @@ The target site should behave as one storefront and admin system. Customers shou
 - Storing real upstream API credentials in git.
 - Placing real test orders upstream without explicit approval.
 - Selling Telegram-related products or services.
-- Making unsupported platforms visible only because one provider supports them.
+- Selling a platform or SKU outside that provider's explicit allowlist.
 
 ## Current Clarity
 

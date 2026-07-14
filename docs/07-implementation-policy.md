@@ -29,8 +29,8 @@ Prefer Dujiao-Next for:
 - TGX adapter.
 - platform normalization;
 - Telegram exclusion;
-- cross-provider platform intersection;
-- provider-specific price multipliers;
+- independent provider allowlists;
+- connection-configured pricing and currency conversion;
 - provider-specific fulfillment and polling;
 - admin sync dashboard if not present.
 

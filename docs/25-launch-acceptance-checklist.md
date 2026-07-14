@@ -112,11 +112,11 @@ Required provider checks:
 Pass criteria:
 
 - Telegram SKUs are absent before test.
-- Non-intersection platforms are absent before test.
-- FansGurus SKU price is upstream `rate * 5`.
+- Provider-disallowed platforms are absent before test.
+- FansGurus SKU price follows the connection pricing settings or the retained manual price.
 - FansGurus quantity basis preserves upstream per-1000 rate, minimums, and
   increments.
-- TGX SKU price is upstream `price * 1.2`.
+- TGX SKU price is correctly converted from CNY to USD and follows connection settings or the retained manual price.
 - Paid local order creates one procurement order.
 - Live submission creates one provider order/trade.
 - Status sync moves local order forward without manual database edits.
@@ -129,7 +129,7 @@ Fail conditions:
 
 - Duplicate provider order is created for one local order.
 - Telegram SKU appears anywhere in catalog, sitemap, search, or navigation.
-- Non-intersection platform appears publicly.
+- Provider-disallowed platform appears publicly.
 - Provider credentials appear in logs or frontend.
 - TGX account secret is visible to an unauthorized user.
 
@@ -161,7 +161,7 @@ Fail conditions:
 - Any public page still points to localhost, staging, or placeholder domain.
 - Any required locale route returns `404`.
 - Any brand asset returns `404`.
-- Sitemap publishes Telegram or non-intersection platform pages.
+- Sitemap publishes Telegram or provider-disallowed platform pages.
 
 ## Public Wording And Compliance
 

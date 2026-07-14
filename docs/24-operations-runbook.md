@@ -352,6 +352,6 @@ After any production change:
 - Run public health checks.
 - Confirm checkout sees only intended payment channels.
 - Confirm Telegram SKUs remain absent.
-- Confirm non-intersection platforms remain absent.
+- Confirm provider-disallowed platforms remain absent.
 - Confirm logs have no secrets.
 - Record the change, operator, timestamp, and rollback path.

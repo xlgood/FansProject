@@ -115,7 +115,7 @@ The required first-sync review is defined at
 `docs/31-production-data-initialization.md:190`.
 
 Required action: keep `worker` stopped; sync the catalog, verify the platform
-intersection and Telegram exclusion, inspect both pricing bases, then execute
+provider allowlists and Telegram exclusion, inspect both pricing configurations, then execute
 one controlled low-value fulfillment per provider. Start the worker only after
 payment acceptance and duplicate-submission checks pass.
 
