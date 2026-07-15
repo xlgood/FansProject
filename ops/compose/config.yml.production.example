@@ -75,6 +75,7 @@ queue:
   queues:
     default: 10
     critical: 5
+    inventory: 1
   upstream_sync_interval: "30m"
 
 upload:
