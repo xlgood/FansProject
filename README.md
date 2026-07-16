@@ -58,6 +58,7 @@
 - `docs/31-production-data-initialization.md`：生产数据初始化、首轮同步、备份和回滚边界清单。
 - `docs/32-prelaunch-e2e-acceptance.md`：上线前端到端验收工作单，覆盖游客限制、下单、支付、后台和 SEO。
 - `docs/33-launch-cutover-runbook.md`：最终上线切换、监控、回滚和上线当天操作时间线。
+- `docs/35-production-gap-remediation-plan-2026-07-15.md`：基于最新发布分支的生产上线差距、整改优先级和验收标准。
 - `ops/init-production-local.sh`：复制生产配置模板到本地忽略目录 `deploy/production-local/`。
 - `ops/check-production-local.sh`：检查本地生产配置草稿并执行 Gate 1 审计。
 - `ops/bootstrap-production-host.sh`：生产或 staging 主机目录、仓库和配置模板初始化脚本。

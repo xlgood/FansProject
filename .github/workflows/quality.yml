@@ -1,0 +1,16 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  operations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell scripts
+        run: bash -n ops/*.sh ops/tests/*.sh
+      - name: Test prelaunch audit
+        run: bash ops/tests/prelaunch-audit.test.sh

@@ -73,6 +73,16 @@ else
   pass "no CHANGE_ME or FINAL_* placeholders remain in audit input files"
 fi
 
+runtime_public_files="$target_dir/compose.env $target_dir/nginx/target-site.conf"
+public_host_pattern='target\.example\.com|(^|[^[:alnum:]-])([[:alnum:]-]+\.)+(example|test|invalid)(:[0-9]+)?([^[:alnum:]._-]|$)|https?://(localhost|127\.[0-9.]+|\[?::1\]?)(:[0-9]+)?([^[:alnum:]._-]|$)'
+reserved_host_hits="$(grep -InE "$public_host_pattern" $runtime_public_files 2>/dev/null || true)"
+if [ -n "$reserved_host_hits" ]; then
+  fail "reserved or local public hosts remain in Compose or Nginx config"
+  printf '%s\n' "$reserved_host_hits" | sed 's/^/  /'
+else
+  pass "Compose and Nginx public hosts are production-safe"
+fi
+
 printf '\nRunning prelaunch audit...\n'
 bash ops/prelaunch-audit.sh \
   --backend-config "$target_dir/config.yml" \

@@ -99,14 +99,16 @@ docker compose \
   up -d admin user
 ```
 
-7. Keep `worker` stopped until payment channels, provider connections, and the
-   first catalog sync have been reviewed:
+7. Keep both side-effect workers stopped until their corresponding acceptance
+   gates pass. The `fulfillment` profile submits and polls provider orders; the
+   `inventory` profile performs provider inventory refreshes:
 
 ```bash
 docker compose \
   --env-file /etc/target-site/compose.env \
   -f docker-compose.production.yml \
-  stop worker
+  --profile fulfillment --profile inventory \
+  stop worker inventory-worker
 ```
 
 ## Bootstrap Admin
@@ -186,7 +188,8 @@ Before first sync:
   basis or retains approved manual SKU prices;
 - confirm TGX pricing converts CNY to USD and uses the connection settings or
   retains approved manual SKU prices;
-- keep `worker` stopped or fulfillment disabled while catalog is reviewed.
+- keep `worker` stopped or fulfillment disabled while catalog is reviewed;
+- keep `inventory-worker` stopped until provider inventory access is approved.
 
 ## First SKU Sync
 
@@ -221,13 +224,25 @@ Catalog review pass criteria:
 - storefront browse works in `zh-CN`, `zh-TW`, and `en`;
 - checkout requires login.
 
-After catalog review passes, start `worker` only when payment acceptance and
-provider fulfillment acceptance are ready:
+After catalog review passes, start `inventory-worker` when provider inventory
+access is approved:
 
 ```bash
 docker compose \
   --env-file /etc/target-site/compose.env \
   -f ops/compose/docker-compose.production.yml \
+  --profile inventory \
+  up -d inventory-worker
+```
+
+Start `worker` only when payment acceptance and provider fulfillment acceptance
+are ready:
+
+```bash
+docker compose \
+  --env-file /etc/target-site/compose.env \
+  -f ops/compose/docker-compose.production.yml \
+  --profile fulfillment \
   up -d worker
 ```
 
@@ -290,7 +305,7 @@ Do not proceed to live traffic if any item is true:
 - bootstrap admin password remains in config or environment;
 - owner/admin password was not changed after first boot;
 - admin 2FA is not enabled;
-- `worker` is running before catalog/payment/provider acceptance;
+- `worker` or `inventory-worker` is running before its acceptance gate;
 - first SKU sync failed or imported zero launchable SKUs;
 - Telegram or provider-disallowed SKUs appear publicly;
 - payment channels allow guest payment;

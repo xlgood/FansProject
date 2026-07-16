@@ -33,6 +33,18 @@
     "telegram": "",
     "whatsapp": ""
   },
+  "legal": {
+    "terms": {
+      "zh-CN": "FINAL_TERMS_ZH_CN",
+      "zh-TW": "FINAL_TERMS_ZH_TW",
+      "en-US": "FINAL_TERMS_EN_US"
+    },
+    "privacy": {
+      "zh-CN": "FINAL_PRIVACY_ZH_CN",
+      "zh-TW": "FINAL_PRIVACY_ZH_TW",
+      "en-US": "FINAL_PRIVACY_EN_US"
+    }
+  },
   "footer_links": [],
   "nav_config": {
     "builtin": {

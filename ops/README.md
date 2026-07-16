@@ -35,7 +35,8 @@ HTTP server limits, `site_config.currency: USD`, final HTTPS `site_url`,
 frontend `VITE_API_BASE_URL`, frontend secret-like env names, and public
 frontend wording that may expose provider/API/procurement internals.
 Template placeholders such as `CHANGE_ME` and `FINAL_*` are treated as
-launch-blocking failures in backend config files.
+launch-blocking failures. Reserved hosts (`.example`, `.test`, `.invalid`, the
+project sample host, and local HTTP origins) are also launch-blocking.
 
 Gate 1 input templates live in `ops/gate1/`:
 

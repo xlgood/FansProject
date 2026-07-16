@@ -231,8 +231,8 @@ docker compose \
 For the first production or staging boot, follow
 `docs/31-production-data-initialization.md` instead of starting all services at
 once. Start PostgreSQL/Redis first, then API for migrations and bootstrap admin,
-then frontend services, and keep `worker` stopped until catalog, payment, and
-provider acceptance are ready.
+then frontend services, and keep `worker` and `inventory-worker` stopped until
+their catalog, payment, inventory, and provider acceptance gates are ready.
 
 ## Reverse Proxy Setup
 

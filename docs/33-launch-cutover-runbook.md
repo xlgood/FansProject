@@ -119,13 +119,15 @@ Use this sequence for first public cutover:
 1. Start PostgreSQL and Redis.
 2. Start API and confirm health.
 3. Start admin and user frontends.
-4. Keep `worker` stopped until payment/provider launch decision.
+4. Keep `worker` and `inventory-worker` stopped until their payment/provider
+   launch decisions.
 5. Reload Nginx.
 6. Run internal smoke through host or staging DNS.
 7. Switch DNS/CDN to production host.
 8. Run public smoke.
 9. Enable payment channels approved for launch.
-10. Enable `worker` or provider fulfillment only after payment smoke passes.
+10. Enable `inventory-worker` after inventory acceptance; enable `worker` or
+    provider fulfillment only after payment and fulfillment smoke pass.
 
 Commands:
 
@@ -147,17 +149,24 @@ docker compose \
 docker compose \
   --env-file /etc/target-site/compose.env \
   -f docker-compose.production.yml \
-  stop worker
+  --profile fulfillment --profile inventory \
+  stop worker inventory-worker
 nginx -t
 nginx -s reload
 ```
 
-Start worker only when approved:
+Start inventory and fulfillment workers only when each is approved:
 
 ```bash
 docker compose \
   --env-file /etc/target-site/compose.env \
   -f docker-compose.production.yml \
+  --profile inventory \
+  up -d inventory-worker
+docker compose \
+  --env-file /etc/target-site/compose.env \
+  -f docker-compose.production.yml \
+  --profile fulfillment \
   up -d worker
 ```
 
@@ -281,7 +290,8 @@ cd /srv/target-site/FansProject/ops/compose
 docker compose \
   --env-file /etc/target-site/compose.env \
   -f docker-compose.production.yml \
-  stop worker
+  --profile fulfillment --profile inventory \
+  stop worker inventory-worker
 ```
 
 Rollback images after restoring previous `APP_VERSION` in

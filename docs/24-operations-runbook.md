@@ -262,7 +262,8 @@ Emergency containment:
 docker compose \
   --env-file /secure/path/target.env \
   -f ops/compose/docker-compose.production.yml \
-  stop worker
+  --profile fulfillment --profile inventory \
+  stop worker inventory-worker
 ```
 
 Notes:

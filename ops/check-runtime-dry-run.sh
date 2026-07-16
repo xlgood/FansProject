@@ -129,6 +129,14 @@ else
   pass "Compose and Nginx runtime files have no launch placeholders"
 fi
 
+public_host_pattern='target\.example\.com|(^|[^[:alnum:]-])([[:alnum:]-]+\.)+(example|test|invalid)(:[0-9]+)?([^[:alnum:]._-]|$)|https?://(localhost|127\.[0-9.]+|\[?::1\]?)(:[0-9]+)?([^[:alnum:]._-]|$)'
+if grep -InE "$public_host_pattern" \
+  "$compose_env" "$nginx_dir/target-site.conf" >/dev/null 2>&1; then
+  fail "Compose or Nginx public config contains a reserved or local host"
+else
+  pass "Compose and Nginx public hosts are production-safe"
+fi
+
 printf '\nChecking Docker Compose render...\n'
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   compose_out="$(mktemp "${TMPDIR:-/tmp}/target-compose-config.XXXXXX")"

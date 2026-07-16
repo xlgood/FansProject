@@ -119,6 +119,17 @@ check_secret_placeholders() {
   fi
 }
 
+check_public_hosts() {
+  public_hosts_label="$1"
+  public_hosts_file="$2"
+  public_host_pattern='target\.example\.com|(^|[^[:alnum:]-])([[:alnum:]-]+\.)+(example|test|invalid)(:[0-9]+)?([^[:alnum:]._-]|$)|https?://(localhost|127\.[0-9.]+|\[?::1\]?)(:[0-9]+)?([^[:alnum:]._-]|$)'
+  if grep -Eiq "$public_host_pattern" "$public_hosts_file"; then
+    fail "$public_hosts_label contains a reserved or local public host"
+  else
+    pass "$public_hosts_label has no reserved or local public hosts"
+  fi
+}
+
 check_backend_config() {
   file="$1"
   if [ ! -f "$file" ]; then
@@ -126,7 +137,8 @@ check_backend_config() {
     return
   fi
 
-  check_secret_placeholders "$file"
+	check_secret_placeholders "$file"
+	check_public_hosts "backend config" "$file"
 
   mode="$(section_value "$file" server mode)"
   if [ "$mode" = "release" ]; then
@@ -177,11 +189,12 @@ check_site_config() {
     return
   fi
 
-  if grep -Eq 'CHANGE_ME|FINAL_[A-Z_]*' "$file"; then
+	if grep -Eq 'CHANGE_ME|FINAL_[A-Z_]*' "$file"; then
     fail "site_config contains template placeholders"
   else
     pass "site_config has no template placeholders"
-  fi
+	fi
+	check_public_hosts "site_config" "$file"
 
   if grep -Eq '"currency"[[:space:]]*:[[:space:]]*"USD"' "$file"; then
     pass "site_config currency is USD"
@@ -200,6 +213,20 @@ check_site_config() {
   else
     pass "site_config does not contain obvious provider/API/procurement wording"
   fi
+
+  if ! command -v jq >/dev/null 2>&1; then
+    fail "jq is required to verify production legal and contact content"
+  elif jq -e '
+    def filled: type == "string" and (gsub("^[[:space:]]+|[[:space:]]+$"; "") | length) > 0;
+    . as $root |
+    ($root.contact.email | filled) and
+    all(["zh-CN", "zh-TW", "en-US"][]; . as $locale |
+      ($root.legal.terms[$locale] | filled) and ($root.legal.privacy[$locale] | filled))
+  ' "$file" >/dev/null 2>&1; then
+    pass "site_config has support email and complete terms/privacy content"
+  else
+    fail "site_config requires support email and terms/privacy content for zh-CN, zh-TW, and en-US"
+  fi
 }
 
 check_frontend_env() {
@@ -214,11 +241,12 @@ check_frontend_env() {
     return
   fi
 
-  if grep -Eq 'CHANGE_ME|FINAL_[A-Z_]*' "$file"; then
+	if grep -Eq 'CHANGE_ME|FINAL_[A-Z_]*' "$file"; then
     fail "$label env contains template placeholders"
   else
     pass "$label env has no template placeholders"
-  fi
+	fi
+	check_public_hosts "$label env" "$file"
 
   api_base="$(awk -F= '/^[[:space:]]*VITE_API_BASE_URL[[:space:]]*=/{print $2; exit}' "$file" | sed 's/^[[:space:]"'\'']*//; s/[[:space:]"'\'']*$//')"
   if [ -z "$api_base" ]; then
