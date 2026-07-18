@@ -170,6 +170,28 @@ else
   fail "Nginx site config has no server_name"
 fi
 
+for header in Content-Security-Policy Permissions-Policy X-Frame-Options; do
+  if grep -q "add_header $header" "$nginx_dir/target-site.conf"; then
+    pass "Nginx site config sets $header"
+  else
+    fail "Nginx site config must set $header"
+  fi
+done
+
+if grep -q 'X-Frame-Options "DENY"' "$nginx_dir/target-site.conf"; then
+  pass "Nginx site config denies framing for admin/API"
+else
+  fail "Nginx site config must deny framing for admin/API"
+fi
+
+for route in '/sitemap.xml' '/robots.txt'; do
+  if grep -Fq "location = $route" "$nginx_dir/target-site.conf"; then
+    pass "Nginx site config proxies $route to the API"
+  else
+    fail "Nginx site config must proxy $route to the API"
+  fi
+done
+
 if grep -q 'proxy_set_header X-Country-Code' "$nginx_dir/target-proxy-headers.conf"; then
   pass "Nginx proxy headers pass country code for locale detection"
 else

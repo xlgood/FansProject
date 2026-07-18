@@ -11,11 +11,12 @@
 - P0-1：目录同步不再因后续库存任务入队失败而覆盖已完成的导入结果；API 返回库存任务状态，后台显示明确警告。
 - P0-2：TGX 单商品库存刷新已加入 `integration` 内置角色，启动补种机制可覆盖已有数据库。
 - P0-3：Gate 1/2 已拒绝 `.example`、`.test`、`.invalid`、localhost、loopback 和项目样例域名，并增加 shell 回归测试。
-- P0-4（配置草稿部分）：三个正式域名已写入 `deploy/production-local`；目标主机 DNS、证书和外部验证仍待完成。
-- P0-5（门禁部分）：Gate 1 现会阻断空支持邮箱或缺少三语条款/隐私内容；线上三语正文已验证存在，本地草稿尚未同步线上配置。
+- P0-4（公网核心项）：三个正式域名、DNS、HTTPS、CORS、sitemap 和 robots 已完成公网验证；本地生产草稿仍不能承载真实秘密或替代目标机的配置验收。
+- P0-5（线上支持联系方式）：公开 `contact.email` 已复核为可收发的 `support@socialgurushub.com`；Gate 1 仍会阻断空支持邮箱或缺少三语条款/隐私内容，本地草稿尚未同步线上配置。
 - P0-8：`worker` 与 `inventory-worker` 已分别使用 Compose `fulfillment`、`inventory` profile，默认 `docker compose up -d` 不会启动；相关手册已同步。
 - P1-1（基础质量门禁）：根仓库及三个应用已增加 push/PR 质量工作流。
 - P1-2：管理后台已提供正式 `npm test` 命令。
+- P0-12（核心安全头）：商店、后台和 API 的 CSP、Permissions-Policy、反嵌入策略已在公网验证；HSTS 仍须等待证书自动续期证据，浏览器 E2E 仍待完成。
 
 整改后验证结果：
 
@@ -40,9 +41,9 @@
 - API 对 `https://socialgurushub.com` 返回正确的 credentialed CORS origin。
 - 线上公开配置包含简中、繁中和英文的条款与隐私正文，六个字段均非空。
 
-公网复核同时发现：公开配置中的支持邮箱为空；三个入口响应未包含仓库 Nginx 模板要求的 CSP、`X-Frame-Options`、`X-Content-Type-Options`、`Referrer-Policy` 和 `Permissions-Policy`。这两项仍需处理。
+上述 2026-07-16 发现已在 2026-07-18 整改：公网公开配置返回 `support@socialgurushub.com`；三个入口均返回 CSP、`X-Frame-Options`、`X-Content-Type-Options`、`Referrer-Policy` 和 `Permissions-Policy`，后台/API 均为 `DENY`。HSTS 未启用，等待三个子域证书自动续期证据。
 
-仍未完成或待验证的 P0：支持联系方式、线上安全响应头、供应商真实验收、支付真实小额验收、生产浏览器 E2E 与切换演练。VPS 内部的 2FA、备份恢复、监控需补充验收记录或提供只读访问后再做独立复核。
+仍未完成或待验证的 P0：供应商真实验收、支付真实小额验收、生产浏览器 E2E 与切换演练。VPS 内部的 2FA、备份恢复、监控需补充验收记录或提供只读访问后再做独立复核。
 
 ## 1. 文档目的
 
@@ -187,6 +188,11 @@
 - DNS、HTTPS 证书、前台、后台、API health 和 storefront CORS 已通过公网只读验证。
 - 证书自动续期机制、支付 callback/webhook、完整 SEO 输出仍需在目标主机或生产 E2E 中归档验证。
 
+**2026-07-18 状态**
+
+- 商店的 `/sitemap.xml` 已返回 `application/xml; charset=utf-8`，`/robots.txt` 已返回纯文本且指向 `https://socialgurushub.com/sitemap.xml`。
+- 该两条路由通过商店 Nginx 的精确 location 反代至 API；完整 canonical、hreflang 与 SSR/prerender 仍需按 SEO 验收单独验证。
+
 ### P0-5 补齐三语法律、退款、可接受使用和支持内容（法律正文已上线，支持联系方式待补）
 
 **现状与证据**
@@ -212,6 +218,11 @@
 
 - 线上公开配置已有 `zh-CN`、`zh-TW`、`en-US` 的条款与隐私正文。
 - 公开 `contact.email` 仍为空；Telegram 和 WhatsApp 也为空。至少需要一个真实可响应的支持渠道。
+
+**2026-07-18 状态**
+
+- 已通过公网 `/api/v1/public/config` 复核 `contact.email` 为 `support@socialgurushub.com`；该邮箱已完成 Zoho 收发和 SMTP 验证。
+- 订单通知继续关闭，直至供应商履约和支付验收批准；需指定售后响应责任人。
 
 ### P0-6 完成生产首次初始化与管理员加固（项目方确认 VPS 已完成）
 
@@ -286,6 +297,14 @@
 - CSP 不阻断支付、API、图片和必要的站点功能。
 - 后台不能被第三方页面 iframe 嵌入。
 - 将响应头检查加入生产 smoke 或监控。
+
+**2026-07-18 状态（核心修复完成）**
+
+- 根因是宝塔代理 `location ^~ /` 及其嵌套 `if` 设置了 `add_header`，阻断了 `server` 块安全头继承。现已在对应代理作用域显式 include 商店、后台和 API 安全头片段，并通过 `nginx -t` 与 reload。
+- Cloudflare Managed Transforms 的“添加安全性标头”已关闭；此前它会将后台/API 的 `X-Frame-Options: DENY` 改写为 `SAMEORIGIN`。
+- 公网复核确认商店、后台和 API 均返回 CSP、`X-Content-Type-Options`、`Referrer-Policy`、`Permissions-Policy` 和预期 framing 策略；后台/API 的 `X-Frame-Options` 为 `DENY`，API CSP 为 `default-src 'none'`。
+- 仓库 Gate 2 已增加安全头、后台/API `DENY`、`/sitemap.xml` 和 `/robots.txt` 精确 API 路由的部署前检查。
+- HSTS 仍待三个子域证书自动续期可靠性的证据；生产浏览器 E2E 仍需验证 CSP 未影响登录、图片和 API。
 
 ### P0-8 明确 worker 与 inventory-worker 的上线开关（已完成）
 
@@ -431,7 +450,7 @@ nginx -t
 
 1. 修复 P0-1、P0-2，使后端 `go test ./... -count=1` 全绿。
 2. 修复 P0-3，让示例域名配置不再通过 Gate 1。
-3. 补齐线上支持联系方式和 P0-12 安全响应头；归档已上线法律正文、DNS/TLS/CORS 的验证结果。
+3. 归档已上线法律正文、DNS/TLS/CORS、安全头与支持邮箱的验证结果；取得证书自动续期证据后再评估 HSTS。
 4. 归档 VPS 上 P0-6、P0-7、P1-3 的内部验收证据，并完成目标主机 Gate 2 记录。
 5. 完成 P0-9 供应商验收，再完成 P0-10 各支付渠道小额验收。
 6. 完成 P0-11 生产 E2E、切换和回滚演练。

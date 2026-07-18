@@ -171,6 +171,8 @@ curl -i https://FINAL_API_DOMAIN/health
 curl -I https://FINAL_DOMAIN/
 curl -I https://FINAL_ADMIN_DOMAIN/
 curl -i https://FINAL_API_DOMAIN/api/v1/public/config
+curl -i https://FINAL_DOMAIN/sitemap.xml
+curl -i https://FINAL_DOMAIN/robots.txt
 ```
 
 Pass criteria:
@@ -178,6 +180,8 @@ Pass criteria:
 - API health returns `200`.
 - Storefront and admin return `200`.
 - Public config returns final brand fields and `currency: "USD"`.
+- Storefront sitemap returns XML and robots returns text with the final-domain
+  Sitemap line.
 
 ## Logs
 

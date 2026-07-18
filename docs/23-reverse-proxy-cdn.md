@@ -69,6 +69,8 @@ Storefront domain:
   - backend, only if API and storefront share this domain
 - `/health`
   - user frontend health
+- `/sitemap.xml`, `/robots.txt`
+  - backend-generated crawler files; these must not fall through to the SPA
 
 Admin domain:
 
@@ -101,6 +103,27 @@ The Nginx template sets:
 - `Permissions-Policy`
 
 Do not enable HSTS until final TLS, redirects, and subdomain policy are tested.
+
+The API domain uses a deny-all CSP because it only returns API responses. Keep
+the storefront and admin CSP allowlists narrow, and test any newly added
+third-party script before adding its origin.
+
+### BT Panel Proxy Rule Caveat
+
+BT Panel generated proxy rules can define `add_header` in `location ^~ /` and
+its nested `if` blocks (for example, for cache control). Nginx then does not
+inherit the security headers declared in the enclosing `server` block. Include
+the matching security-header snippet in the generated proxy location and in
+each child block that emits headers; verify the effective response rather than
+only inspecting the server block.
+
+Saving or regenerating a BT Panel reverse-proxy rule can overwrite those
+generated files. Back up the rule, reapply the includes, run `nginx -t`, reload
+Nginx, and check all three public domains after every proxy-rule edit.
+
+When Cloudflare fronts the site, keep Managed Transforms "Add security headers"
+disabled if the origin uses different framing policies per domain. Otherwise
+the transform can overwrite `X-Frame-Options: DENY` on the admin or API domain.
 
 If third-party payment SDKs, analytics, or support widgets are added later,
 update CSP intentionally. Do not loosen CSP to wildcard sources.
@@ -197,5 +220,11 @@ curl -i https://FINAL_API_DOMAIN/api/v1/public/config
 curl -i https://FINAL_DOMAIN/sitemap.xml
 curl -i https://FINAL_DOMAIN/robots.txt
 ```
+
+Pass criteria: the storefront `sitemap.xml` has an XML content type, the
+storefront `robots.txt` has a text content type and a final-domain Sitemap
+line, and all three domains return CSP, Permissions-Policy, and the expected
+framing policy. Do not add HSTS until certificate renewal for every included
+subdomain has been verified.
 
 Also run Gate 3 in `docs/20-go-live-runbook.md`.

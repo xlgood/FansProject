@@ -164,6 +164,8 @@ Pass criteria:
 - Public pages return HTTP `200`.
 - Public config returns final brand fields and `currency: "USD"`.
 - Unknown CORS origins are not allowed.
+- Storefront, admin, and API return CSP and Permissions-Policy; admin/API
+  reject framing.
 - Sitemap, canonical links, and `hreflang` use the final HTTPS domain.
 - Locale-prefixed pages render in the expected language.
 - Favicon, logo, and OG image return HTTP `200`.

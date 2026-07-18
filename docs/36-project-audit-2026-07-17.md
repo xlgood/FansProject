@@ -5,6 +5,8 @@
 支付范围：支付渠道未启用，且按项目方要求不作为本报告的缺陷判断范围。  
 结论：**可继续内部测试与 staging；除支付外，当前仍不满足对外公开上线条件。**
 
+最后更新：2026-07-18（SMTP、支持邮箱、安全响应头与 crawler 路由整改复核）。
+
 ## 持久记忆
 
 以下事实是本轮后续工作必须沿用的项目上下文，除非项目方明确更新：
@@ -19,6 +21,9 @@
 - 首发支付策略为**仅 PayPal**。PayPal 已存在于项目配置能力中，但尚未完成真实小额支付、Webhook 验签、金额核对和重复通知幂等验收；在验收通过前必须保持停用。
 - 支付宝和微信支付均不属于当前首发范围。不要用不匹配的类目、个人收款码、借用商户号或未经授权的第四方聚合渠道规避商户准入。
 - Payoneer 的美国/香港 Receiving Account 仅可作为未来已获 Payoneer 书面批准的 B2B 客户/代理商汇款备选；不得公开给个人消费者作为商城收银台，也不得仅凭汇款截图履约。
+- 2026-07-18 已在公网确认商店、后台和 API 的 CSP、`X-Frame-Options`、`X-Content-Type-Options`、`Referrer-Policy` 与 `Permissions-Policy`；后台和 API 均为 `X-Frame-Options: DENY`，不得由 CDN 改写为 `SAMEORIGIN`。
+- 宝塔反向代理规则中的 `location`/嵌套 `if` 若设置了 `add_header`，会阻断上层安全头继承；重新保存宝塔反向代理规则可能覆盖当前安全头 `include`，每次改动后必须重新执行 `nginx -t`、reload 与三域公网响应头检查。
+- HSTS 尚未启用。必须先获得三个正式子域证书自动续期可靠的证据，再单独评估是否启用；本项不能被误报为已完成。
 
 ## 2026-07-17 支付渠道决策
 
@@ -56,7 +61,7 @@ PayPal 验收时的固定约束：
 | 后台运行时 SMTP 设置 | 已完成 | 管理后台 SMTP 测试邮件发送成功。后台 settings 优先于 `config.yml`，两处必须保持一致。 |
 | 注册验证码 | 已完成 | 测试期允许域名中的 `support@socialgurushub.com` 已收到商城注册验证码。 |
 
-当前未确认项：公开站点 `contact.email` 是否已经保存为 `support@socialgurushub.com`。在公开上线前，必须在后台 Site Settings 中填写并通过公开配置复核。订单邮件通知保持关闭，直至履约 worker 和供应商验收获批。
+2026-07-18 已通过公网 `/api/v1/public/config` 复核公开站点 `contact.email` 为 `support@socialgurushub.com`。订单邮件通知保持关闭，直至履约 worker 和供应商验收获批。
 
 ## 审查基线
 
@@ -76,7 +81,7 @@ PayPal 验收时的固定约束：
 | --- | --- | --- |
 | 内部测试 / staging | 可继续 | 代码测试、前后台构建及核心访问限制通过。 |
 | 外部用户注册与浏览 | 测试期限制 | SMTP 和验证码已验证；外部邮箱仍被刻意的测试期白名单阻断，公开上线前需移除该限制并复测。 |
-| 非支付公开上线 | 不可开放 | 线上安全头未按模板生效，供应商真实履约和运维证据未完成，SEO 路由存在错误。 |
+| 非支付公开上线 | 不可开放 | 外部客户注册策略、供应商真实履约、备份/恢复/监控证据、生产浏览器 E2E 与切换演练尚未完成；安全头和 sitemap/robots 路由已在 2026-07-18 修复。 |
 | 商品上架 | 上线前运营动作 | 测试阶段保持 0 商品符合当前策略；不作为缺陷。 |
 
 ## P0：公开上线阻断项
@@ -98,15 +103,15 @@ PayPal 验收时的固定约束：
 2. 公开开放前，关闭/重设该白名单策略，并确认邮箱验证开启。
 3. 用 Gmail、Outlook 等外部邮箱完成注册、登录、验证、找回密码和通知收取测试。
 
-### P0-2 支持联系方式未配置
+### P0-2 支持联系方式（已完成）
 
 审查初始状态的线上公开配置中 `contact.email`、Telegram、WhatsApp 均为空。本地生产草稿的 Gate 1 也实测失败，唯一失败原因是缺少支持邮箱与三语法律内容的完整输入；线上三语条款和隐私正文已经存在，但无可用售后入口。
 
-2026-07-17 已创建且验证 `support@socialgurushub.com` 的实际收发能力；是否已同步保存到公开站点 `contact.email` 尚未获得复核证据，因此本项仍未关闭。
+2026-07-17 已创建且验证 `support@socialgurushub.com` 的实际收发能力。2026-07-18 已通过公网 `/api/v1/public/config` 确认 `contact.email` 已保存为该地址，因此本项关闭。Git 中的生产草稿仍缺脱敏后的法律/联系资料，导致本地 Gate 1 不能代表线上实际状态；不要为消除这一告警而把生产密钥或其他敏感配置提交到仓库。
 
-完成标准：配置一个真实、可收发且有责任人的支持邮箱；将生产草稿同步后重新执行 Gate 1 并获得 `0 failure`。
+剩余运营要求：指定实际值班/响应责任人，并在开放支付或订单邮件前完成售后流程验收。
 
-### P0-3 线上安全响应头与仓库模板不一致
+### P0-3 线上安全响应头（核心修复已完成；HSTS 与浏览器 E2E 待后续验收）
 
 2026-07-17 对商店、后台和 API 进行公网 HTTPS GET 检查：
 
@@ -116,12 +121,22 @@ PayPal 验收时的固定约束：
 
 仓库 Nginx 模板已声明 CSP、Permissions Policy 和后台 `DENY`，见 `ops/nginx/target-site.conf.example:39`。这说明 VPS/CDN 生效配置与仓库模板不一致。前后台令牌存储在浏览器 `localStorage`，使 CSP 与防嵌入控制尤为重要。
 
-完成标准：
+2026-07-18 已完成根因修复并进行源站和公网复核：宝塔反向代理的 `location ^~ /` 及其设置缓存头的嵌套 `if` 使用了 `add_header`，使站点 `server` 块的安全头不再继承。现已在对应作用域显式引入商店、后台和 API 的安全头片段；商店还为 `/sitemap.xml`、`/robots.txt` 增加精确 API 反代。Cloudflare Managed Transforms 的“添加安全性标头”已关闭，避免其将后台/API 的 `DENY` 覆盖为 `SAMEORIGIN`。
 
-1. 对 VPS Nginx 与 Cloudflare 生效规则逐项比对并修复。
-2. 三个正式域名均返回所需 CSP、Permissions Policy；后台不可被 iframe 嵌入。
-3. 确认所有子域 TLS 续期后再启用 HSTS。
-4. 将公网响应头检测加入发布 smoke 或监控。
+公网 HTTPS 复核结果：
+
+- 商店返回 CSP、`Permissions-Policy`、`X-Content-Type-Options: nosniff`、严格 `Referrer-Policy` 和 `X-Frame-Options: SAMEORIGIN`。
+- 后台返回 CSP `frame-ancestors 'none'`、`Permissions-Policy`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: no-referrer` 及 `X-Frame-Options: DENY`。
+- API `/health` 返回 deny-all CSP（`default-src 'none'`）、`Permissions-Policy`、`X-Content-Type-Options: nosniff`、`Referrer-Policy` 及 `X-Frame-Options: DENY`。
+- VPS `nginx -t` 与 reload 均成功；2026-07-18 Cloudflare 公网响应仍保留后台/API 的 `DENY`，确认 CDN 未再改写。
+
+已完成的标准：
+
+1. 已对 VPS Nginx 与 Cloudflare 生效规则逐项比对并修复。
+2. 三个正式域名均返回所需 CSP、Permissions Policy；后台/API 均拒绝 iframe 嵌入。
+3. 仓库部署前 Gate 2 已检查 Nginx 模板中的 CSP、Permissions-Policy、后台/API `DENY` 和 sitemap/robots 精确路由。
+
+尚未完成：确认所有子域 TLS 自动续期后再评估 HSTS；在生产浏览器 E2E 中确认 CSP 不影响登录、图片、前后台 API 和未来经批准的第三方脚本。
 
 ### P0-4 供应商真实履约验收尚无证据
 
@@ -142,13 +157,13 @@ Compose 提供服务健康检查，但未声明备份、异地存储、监控或
 
 ## P1：上线前应修复
 
-### P1-1 商店域名的 sitemap 和 robots 路由错误
+### P1-1 商店域名的 sitemap 和 robots 路由（已完成）
 
 `https://socialgurushub.com/sitemap.xml` 返回 `text/html` 的 SPA 首页，而非 XML sitemap；商店域名的 `robots.txt` 末尾也被 SPA HTML 回退内容污染。API 域名对应端点则能正确生成 XML 和文本，见 `dujiao-next/internal/http/handlers/public/sitemap.go:11`。
 
 原因是商店 Nginx 仅将 `/api/v1/` 反代至 API，`/sitemap.xml` 和 `/robots.txt` 落入前台 SPA 的 `location /`。
 
-完成标准：在商店域名明确反代这两个路径到 API，或生成并部署静态文件；复查 XML Content-Type、robots 的 Sitemap 声明及搜索引擎访问结果。
+2026-07-18 已在宝塔商店域名配置中将两个精确路径反代至 `127.0.0.1:8080`，并通过公网复核：`https://socialgurushub.com/sitemap.xml` 返回 `200` 和 `application/xml; charset=utf-8`，正文为 XML；`https://socialgurushub.com/robots.txt` 返回 `text/plain; charset=utf-8`，包含 `Sitemap: https://socialgurushub.com/sitemap.xml`。本项关闭。搜索引擎收录与完整 SSR/prerender 仍属于 P1-2 的后续工作。
 
 ### P1-2 SEO 依赖浏览器 JS，初始 HTML 不可发现
 
@@ -185,6 +200,9 @@ Compose 提供服务健康检查，但未声明备份、异地存储、监控或
 | 后台 `pnpm test` | 通过，13/13 |
 | 后台 `pnpm build` | 通过 |
 | 公网 HTTPS：商店、后台、API health | 均返回 200 |
+| 公开支持邮箱 | `/api/v1/public/config` 返回 `support@socialgurushub.com` |
+| 公网安全头 | 三域返回 CSP、Permissions-Policy 和预期 framing 策略；后台/API 为 `DENY` |
+| 商店 sitemap / robots | 分别返回 XML 与纯文本，robots 指向正式域名 sitemap |
 | API CORS（商店 origin） | 返回指定 origin 和 credentials |
 | 游客订单 GET/POST | 均返回 401，登录后下单限制生效 |
 | 上传校验 | 文件类型、尺寸和危险 SVG 内容均有实现与测试 |
@@ -193,8 +211,7 @@ Compose 提供服务健康检查，但未声明备份、异地存储、监控或
 
 ## 建议执行顺序
 
-1. 保持测试期邮箱白名单；在公开上线前移除该限制，完成 Gmail/Outlook 注册与找回密码验收，并确认公开 `contact.email` 已保存为 `support@socialgurushub.com`。
-2. 修复 VPS/CDN 安全头，并在公网确认其生效。
-3. 修复商店域名的 sitemap/robots 反代；确定 SSR/prerender 的 SEO 方案。
-4. 在 staging 上完成供应商目录、价格、库存和受控履约验收后再上架商品。
-5. 补齐备份、恢复、监控、浏览器 E2E 与切换演练的证据，再进行公开上线签署。
+1. 保持测试期邮箱白名单；在公开上线前移除该限制，完成 Gmail/Outlook 注册与找回密码验收。
+2. 确定 SSR/prerender 的 SEO 方案；自然搜索为主要获客渠道时，将 P1-2 升为 P0。
+3. 在 staging 上完成供应商目录、价格、库存和受控履约验收后再上架商品。
+4. 归档备份、恢复、监控、生产浏览器 E2E 与切换演练的证据；取得证书自动续期证据后再决定是否启用 HSTS。
