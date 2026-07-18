@@ -10,7 +10,7 @@
 - FansGurus API Key 已由项目方提供，必须通过本地 `.env` 或部署 secret 注入，不写入 git。
 - TGX `app_id` / `app_key` 已由项目方提供，必须通过本地 `.env` 或部署 secret 注入，不写入 git。
 - TGX 价格加价基准使用 `price`。
-- 上线支付渠道预期支持支付宝、微信支付、PayPal，优先复用 Dujiao-Next 已集成能力。
+- 首发支付渠道仅保留 PayPal；支付宝网站支付已因当前业务类别被拒，微信支付及其他渠道延后评估。PayPal 真实小额验收通过前保持停用。
 - 目标网站展示和结算币种统一使用 USD；FansGurus 明确返回 USD，TGX API 未提供可机器读取的币种字段。
 - 项目级集成配置统一使用根目录 `.env`。
 - clone 下来的 Dujiao-Next 源码目录不纳入当前主仓库跟踪，保留各自上游 git 历史。
@@ -54,11 +54,12 @@
 - `docs/27-gate1-production-config-workbook.md`：Gate 1 真实生产配置准备工作单。
 - `docs/28-secret-generation-guide.md`：生产密钥生成、填写和轮换说明。
 - `docs/29-production-environment-checklist.md`：生产或 staging 主机环境准备清单。
-- `docs/30-payment-launch-workbook.md`：支付宝、微信支付、PayPal 上线配置和验收工作单。
+- `docs/30-payment-launch-workbook.md`：PayPal 首发配置和验收工作单，以及已延期渠道的决策记录。
 - `docs/31-production-data-initialization.md`：生产数据初始化、首轮同步、备份和回滚边界清单。
 - `docs/32-prelaunch-e2e-acceptance.md`：上线前端到端验收工作单，覆盖游客限制、下单、支付、后台和 SEO。
 - `docs/33-launch-cutover-runbook.md`：最终上线切换、监控、回滚和上线当天操作时间线。
 - `docs/35-production-gap-remediation-plan-2026-07-15.md`：基于最新发布分支的生产上线差距、整改优先级和验收标准。
+- `docs/36-project-audit-2026-07-17.md`：最新项目审查报告与持久项目记忆，记录测试阶段商品未上架为预期策略及当前上线阻断项。
 - `ops/init-production-local.sh`：复制生产配置模板到本地忽略目录 `deploy/production-local/`。
 - `ops/check-production-local.sh`：检查本地生产配置草稿并执行 Gate 1 审计。
 - `ops/bootstrap-production-host.sh`：生产或 staging 主机目录、仓库和配置模板初始化脚本。

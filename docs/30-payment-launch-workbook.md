@@ -1,14 +1,23 @@
-# Payment Launch Workbook
+# PayPal Launch Workbook
 
 Date: 2026-07-10
 
 ## Purpose
 
-Use this workbook to prepare and accept the launch payment channels:
+Use this workbook to prepare and accept the only planned launch payment
+channel: PayPal official.
 
-- Alipay official
-- WeChat Pay official
-- PayPal official
+Decision record (2026-07-17):
+
+- PayPal is the sole launch candidate and remains disabled until the acceptance
+  checks in this workbook pass.
+- Alipay website payment was rejected for the current business category. The
+  project will not appeal, reapply under a different category, or use another
+  merchant's credentials.
+- WeChat Pay, Stripe, EPay/aggregators, and crypto payment providers are
+  deferred. Code support does not authorize them for launch.
+- Payoneer Receiving Accounts are not a consumer checkout replacement. They
+  may only be reconsidered for an approved B2B bank-transfer workflow.
 
 Do not commit payment credentials. Configure them only in the protected backend
 admin payment channel records or the production secret store used to populate
@@ -18,10 +27,8 @@ those records.
 
 The backend routes official payment channels through:
 
-| Channel | `provider_type` | `channel_type` | Supported interaction modes | Callback/webhook |
+| Channel | `provider_type` | `channel_type` | Interaction mode | Webhook |
 | --- | --- | --- | --- | --- |
-| Alipay official | `official` | `alipay` | `qr`, `wap`, `page` | `POST/GET /api/v1/payments/callback` |
-| WeChat Pay official | `official` | `wechat` | `qr`, `redirect` | `POST /api/v1/payments/callback` or provider webhook handling |
 | PayPal official | `official` | `paypal` | `redirect` | `POST /api/v1/payments/webhook/paypal` |
 
 Target site policy:
@@ -31,8 +38,8 @@ Target site policy:
 - launch channels should include order payment type;
 - keep wallet recharge disabled unless operations explicitly approves it;
 - target storefront currency remains `USD`;
-- if a gateway requires `CNY`, configure channel-level exchange settings and
-  verify the stored payment amount/currency matches the gateway charge.
+- PayPal settlement and checkout currency must be supported by the approved
+  PayPal merchant account; any conversion must be configured and reconciled.
 
 ## Final URLs
 
@@ -42,7 +49,6 @@ Replace the temporary domains before production:
 | --- | --- |
 | Storefront return base | `https://FINAL_DOMAIN` |
 | API origin | `https://FINAL_API_DOMAIN` |
-| Generic payment callback | `https://FINAL_API_DOMAIN/api/v1/payments/callback` |
 | PayPal webhook | `https://FINAL_API_DOMAIN/api/v1/payments/webhook/paypal` |
 
 Reverse proxy and CDN rules must pass these callback/webhook request bodies
@@ -56,44 +62,12 @@ Common payment channel fields:
 | --- | --- |
 | `is_active` | `false` while configuring; enable only during acceptance |
 | `provider_type` | `official` |
-| `channel_type` | one of `alipay`, `wechat`, `paypal` |
+| `channel_type` | `paypal` |
 | `payment_roles` | `member` |
 | `payment_types` | `order` |
 | `min_amount` / `max_amount` | match merchant account limits |
 | `hide_amount_out_range` | `true` if amount limits are set |
 | `fee_rate` / `fixed_fee` | match finance decision |
-
-Alipay `config_json` fields:
-
-| Field | Notes |
-| --- | --- |
-| `app_id` | Alipay open platform app ID |
-| `private_key` | merchant private key, server-side only |
-| `alipay_public_key` | Alipay public key |
-| `gateway_url` | production gateway, usually `https://openapi.alipay.com/gateway.do` |
-| `notify_url` | generic callback URL |
-| `return_url` | required for `wap` and `page` modes |
-| `sign_type` | use `RSA2` unless the merchant account requires otherwise |
-| `app_cert_sn` | required only when the account uses certificate mode |
-| `alipay_root_cert_sn` | required only when the account uses certificate mode |
-| `target_currency` / `exchange_rate` | set when converting site USD to CNY |
-
-WeChat Pay `config_json` fields:
-
-| Field | Notes |
-| --- | --- |
-| `appid` | WeChat app ID |
-| `mchid` | merchant ID |
-| `merchant_serial_no` | API certificate serial number |
-| `merchant_private_key` | merchant private key, server-side only |
-| `api_v3_key` | API v3 key, server-side only |
-| `notify_url` | generic callback URL |
-| `h5_redirect_url` | required for `redirect` mode |
-| `h5_type` | optional: `WAP`, `IOS`, or `ANDROID` |
-| `h5_wap_url` | optional H5 site URL |
-| `h5_wap_name` | optional H5 site name |
-| `base_url` | optional gateway override |
-| `target_currency` / `exchange_rate` | set when converting site USD to CNY |
 
 PayPal `config_json` fields:
 
@@ -134,12 +108,6 @@ For PayPal, also confirm:
 - capture status is successful or an allowed pending state;
 - `webhook_id` belongs to the same PayPal app as `client_id`.
 
-For Alipay and WeChat Pay, also confirm:
-
-- callback signature verification succeeds;
-- USD to CNY conversion, if configured, is reflected in local payment records;
-- return URL works without exposing internal implementation wording.
-
 ## Launch Blockers
 
 Do not enable live payment if any item is true:
@@ -151,7 +119,6 @@ Do not enable live payment if any item is true:
 - frontend env contains payment secrets;
 - callback/webhook request body is modified or cached by CDN/reverse proxy;
 - signature verification is skipped or failing;
-- Alipay/WeChat conversion rate is missing when the gateway requires CNY;
 - PayPal live channel points at sandbox `base_url`, or sandbox channel points at
   live `base_url`;
 - a paid order can create duplicate fulfillment records;
