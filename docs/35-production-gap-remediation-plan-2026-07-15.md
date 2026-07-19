@@ -17,6 +17,7 @@
 - P1-1（基础质量门禁）：根仓库及三个应用已增加 push/PR 质量工作流。
 - P1-2：管理后台已提供正式 `npm test` 命令。
 - P0-12（核心安全头）：商店、后台和 API 的 CSP、Permissions-Policy、反嵌入策略已在公网验证；HSTS 仍须等待证书自动续期证据，浏览器 E2E 仍待完成。
+- 外部注册：邮箱白名单已关闭；Gmail 已完成 Turnstile、验证码、注册、登录和找回密码验收。项目方接受不再单独执行 Outlook/Hotmail 验收。
 
 整改后验证结果：
 
@@ -304,7 +305,8 @@
 - Cloudflare Managed Transforms 的“添加安全性标头”已关闭；此前它会将后台/API 的 `X-Frame-Options: DENY` 改写为 `SAMEORIGIN`。
 - 公网复核确认商店、后台和 API 均返回 CSP、`X-Content-Type-Options`、`Referrer-Policy`、`Permissions-Policy` 和预期 framing 策略；后台/API 的 `X-Frame-Options` 为 `DENY`，API CSP 为 `default-src 'none'`。
 - 仓库 Gate 2 已增加安全头、后台/API `DENY`、`/sitemap.xml` 和 `/robots.txt` 精确 API 路由的部署前检查。
-- HSTS 仍待三个子域证书自动续期可靠性的证据；生产浏览器 E2E 仍需验证 CSP 未影响登录、图片和 API。
+- 2026-07-18 启用 Turnstile 时发现前后台 Vue locale 运行时使用 `new Function`。`script-src` 必须暂时保留 `'unsafe-eval'`，否则商店和后台会白屏；商店和后台还需允许 `https://challenges.cloudflare.com` 的 script/frame。API CSP 继续为 deny-all。
+- HSTS 仍待三个子域证书自动续期可靠性的证据；生产浏览器 E2E 仍需验证 CSP 未影响登录、图片、API 和 Turnstile。预编译 locale 消息并移除 `'unsafe-eval'` 为 P1 安全整改。
 
 ### P0-8 明确 worker 与 inventory-worker 的上线开关（已完成）
 

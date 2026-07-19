@@ -108,6 +108,18 @@ The API domain uses a deny-all CSP because it only returns API responses. Keep
 the storefront and admin CSP allowlists narrow, and test any newly added
 third-party script before adding its origin.
 
+### Turnstile And Vue Runtime Compatibility
+
+When Cloudflare Turnstile protects a frontend flow, allow only
+`https://challenges.cloudflare.com` in `script-src` and `frame-src` for the
+storefront and admin domains. Do not add that origin to the API CSP.
+
+The current Vue locale runtime compiles messages with `new Function`; the
+storefront and admin CSP therefore currently require `'unsafe-eval'`. It is a
+temporary compatibility exception, not a general script allowance. Precompile
+locale messages in the production build, verify both frontends, then remove
+`'unsafe-eval'`. Do not add `'unsafe-inline'` to `script-src` as a workaround.
+
 ### BT Panel Proxy Rule Caveat
 
 BT Panel generated proxy rules can define `add_header` in `location ^~ /` and

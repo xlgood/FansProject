@@ -5,7 +5,7 @@
 支付范围：支付渠道未启用，且按项目方要求不作为本报告的缺陷判断范围。  
 结论：**可继续内部测试与 staging；除支付外，当前仍不满足对外公开上线条件。**
 
-最后更新：2026-07-18（SMTP、支持邮箱、安全响应头与 crawler 路由整改复核）。
+最后更新：2026-07-18（外部注册、Turnstile、SMTP、安全响应头与 crawler 路由整改复核）。
 
 ## 持久记忆
 
@@ -17,13 +17,14 @@
 - 公开下单必须登录；`/api/v1/guest/*` 仍应持续返回 `401`。
 - 站点正式域名为 `socialgurushub.com`、`api.socialgurushub.com`、`admin.socialgurushub.com`。
 - 邮件服务使用 Zoho Mail：`support@socialgurushub.com` 是当前实际收发与 SMTP 发件地址；SMTP 凭据仅保存在 VPS 受保护的 `config.yml` 与后台运行时设置中，绝不写入 Git 或前端变量。
-- 测试期保留注册邮箱域名白名单，仅允许 `socialgurushub.com`；该限制是刻意的测试策略。正式开放外部注册前，必须关闭或重新设计该白名单，并以 Gmail/Outlook 完成端到端验收。
+- 注册邮箱域名白名单已于 2026-07-18 关闭；注册和找回密码的验证码受 Cloudflare Turnstile 保护，邮箱验证保持开启。Gmail 已完成注册、验证码、登录和找回密码验收；项目方决定不再单独执行 Outlook 验收。
 - 首发支付策略为**仅 PayPal**。PayPal 已存在于项目配置能力中，但尚未完成真实小额支付、Webhook 验签、金额核对和重复通知幂等验收；在验收通过前必须保持停用。
 - 支付宝和微信支付均不属于当前首发范围。不要用不匹配的类目、个人收款码、借用商户号或未经授权的第四方聚合渠道规避商户准入。
 - Payoneer 的美国/香港 Receiving Account 仅可作为未来已获 Payoneer 书面批准的 B2B 客户/代理商汇款备选；不得公开给个人消费者作为商城收银台，也不得仅凭汇款截图履约。
 - 2026-07-18 已在公网确认商店、后台和 API 的 CSP、`X-Frame-Options`、`X-Content-Type-Options`、`Referrer-Policy` 与 `Permissions-Policy`；后台和 API 均为 `X-Frame-Options: DENY`，不得由 CDN 改写为 `SAMEORIGIN`。
 - 宝塔反向代理规则中的 `location`/嵌套 `if` 若设置了 `add_header`，会阻断上层安全头继承；重新保存宝塔反向代理规则可能覆盖当前安全头 `include`，每次改动后必须重新执行 `nginx -t`、reload 与三域公网响应头检查。
 - HSTS 尚未启用。必须先获得三个正式子域证书自动续期可靠的证据，再单独评估是否启用；本项不能被误报为已完成。
+- 当前前后台 Vue 多语言运行时依赖 CSP 的 `script-src 'unsafe-eval'`；商店和后台还需允许 `https://challenges.cloudflare.com` 的 script/frame 以支持 Turnstile。此为临时兼容性放宽，不允许扩展为通配来源，后续必须改用预编译 locale 消息后移除 `unsafe-eval`。
 
 ## 2026-07-17 支付渠道决策
 
@@ -63,6 +64,19 @@ PayPal 验收时的固定约束：
 
 2026-07-18 已通过公网 `/api/v1/public/config` 复核公开站点 `contact.email` 为 `support@socialgurushub.com`。订单邮件通知保持关闭，直至履约 worker 和供应商验收获批。
 
+## 2026-07-18 外部注册与 Turnstile 验收
+
+项目方已在 Cloudflare 创建 Turnstile 小组件，允许 `socialgurushub.com` 与 `admin.socialgurushub.com`，模式为 Managed，且未开启已验证访问者绕过安全规则。密钥仅保存于后台运行时设置，未写入 Git、前端或本报告。
+
+线上公开配置已复核为：
+
+- `registration_enabled=true`；
+- `email_verification_enabled=true`；
+- `email_domain_allowlist_enabled=false`；
+- CAPTCHA provider 为 `turnstile`，只启用 `register_send_code` 与 `reset_send_code`；登录场景继续关闭。
+
+实际验收：Gmail 已完成 Turnstile、注册验证码收取、账号注册、登录和找回密码。项目方明确决定不再单独执行 Outlook/Hotmail 验收，作为该项的已接受测试覆盖限制。外部注册已开放；应监控邮件退信、验证码请求异常和注册滥用。
+
 ## 审查基线
 
 已执行 `git fetch --prune`，并确认五个工作区均干净、与各自 `origin/main` 一致：
@@ -80,13 +94,13 @@ PayPal 验收时的固定约束：
 | 场景 | 结论 | 原因 |
 | --- | --- | --- |
 | 内部测试 / staging | 可继续 | 代码测试、前后台构建及核心访问限制通过。 |
-| 外部用户注册与浏览 | 测试期限制 | SMTP 和验证码已验证；外部邮箱仍被刻意的测试期白名单阻断，公开上线前需移除该限制并复测。 |
+| 外部用户注册与浏览 | 已开放，持续监控 | 外部白名单已关闭；Gmail 完整注册与找回密码、Zoho SMTP 和 Turnstile 已验收。Outlook 未单独测试，属项目方接受的覆盖限制。 |
 | 非支付公开上线 | 不可开放 | 外部客户注册策略、供应商真实履约、备份/恢复/监控证据、生产浏览器 E2E 与切换演练尚未完成；安全头和 sitemap/robots 路由已在 2026-07-18 修复。 |
 | 商品上架 | 上线前运营动作 | 测试阶段保持 0 商品符合当前策略；不作为缺陷。 |
 
 ## P0：公开上线阻断项
 
-### P0-1 外部客户注册策略尚未完成公开上线验收
+### P0-1 外部客户注册策略（已完成，含已接受的邮箱覆盖限制）
 
 审查初始状态的线上公开配置显示：
 
@@ -95,13 +109,11 @@ PayPal 验收时的固定约束：
 - `allowed_email_domains=["socialgurushub.com"]`；
 - `smtp_enabled=false`、`email_verification_enabled=false`。
 
-此状态已在 2026-07-17 部分整改：Zoho SMTP、后台 SMTP 测试邮件及测试期注册验证码均已通过。当前保留 `socialgurushub.com` 白名单是测试策略，不是缺陷；因此普通外部客户暂时仍不能注册。前台将白名单域名作为注册邮箱组成部分，后端也会强制拒绝非白名单邮箱，见 `user/src/composables/useRegister.ts:49` 与 `dujiao-next/internal/http/handlers/public/user_auth.go:123`。
+此状态已在 2026-07-17 部分整改：Zoho SMTP、后台 SMTP 测试邮件及测试期注册验证码均已通过。2026-07-18 已关闭 `email_domain_allowlist_enabled`，前台注册页恢复完整邮箱输入；后端仍保留域名策略校验，见 `user/src/composables/useRegister.ts:49` 与 `dujiao-next/internal/http/handlers/public/user_auth.go:123`，但策略关闭后不再阻断外部域名。
 
-完成标准：
+Cloudflare Turnstile（Managed）已只用于“注册发送验证码”和“找回密码发送验证码”。Gmail 已通过 Turnstile、收取验证码、注册、登录和找回密码；项目方明确决定接受该覆盖并不再单独测试 Outlook/Hotmail。此 P0 项关闭。
 
-1. 测试期继续保留白名单，或显式关闭公开注册。
-2. 公开开放前，关闭/重设该白名单策略，并确认邮箱验证开启。
-3. 用 Gmail、Outlook 等外部邮箱完成注册、登录、验证、找回密码和通知收取测试。
+持续要求：监控验证码发送频率、邮箱退信和异常注册；如发生滥用，先在 Cloudflare/后台收紧 CAPTCHA 或限流，不要重新启用只允许内部域名的白名单作为常规方案。
 
 ### P0-2 支持联系方式（已完成）
 
@@ -136,7 +148,7 @@ PayPal 验收时的固定约束：
 2. 三个正式域名均返回所需 CSP、Permissions Policy；后台/API 均拒绝 iframe 嵌入。
 3. 仓库部署前 Gate 2 已检查 Nginx 模板中的 CSP、Permissions-Policy、后台/API `DENY` 和 sitemap/robots 精确路由。
 
-尚未完成：确认所有子域 TLS 自动续期后再评估 HSTS；在生产浏览器 E2E 中确认 CSP 不影响登录、图片、前后台 API 和未来经批准的第三方脚本。
+尚未完成：确认所有子域 TLS 自动续期后再评估 HSTS；在生产浏览器 E2E 中确认 CSP 不影响登录、图片、前后台 API 和未来经批准的第三方脚本。当前 Vue 多语言运行时需要 `'unsafe-eval'`，且 Turnstile 需要 `https://challenges.cloudflare.com` 的 script/frame 白名单；必须在预编译 locale 消息后移除 `'unsafe-eval'`，不得继续放宽来源。
 
 ### P0-4 供应商真实履约验收尚无证据
 
@@ -171,11 +183,11 @@ Compose 提供服务健康检查，但未声明备份、异地存储、监控或
 
 完成标准：对首页、分类、商品和文章采用 SSR/prerender，或由边缘层输出预渲染 HTML；至少保证服务端响应有正确的语言、title、description、canonical 与 alternate links。若自然搜索是主要获客渠道，此项应升为 P0。
 
-### P1-3 富文本和自定义脚本的 XSS 风险
+### P1-3 富文本、自定义脚本与 CSP `'unsafe-eval'` 的 XSS 风险
 
-法律页直接渲染 `v-html`，见 `user/src/views/Legal.vue:17`。后台可配置站点富文本；站点自定义脚本会创建并插入可执行 script 元素，见 `user/src/utils/customScripts.ts:100`。线上当前 `scripts=[]`，应继续保持空；缺失 CSP 会进一步提高风险。
+法律页直接渲染 `v-html`，见 `user/src/views/Legal.vue:17`。后台可配置站点富文本；站点自定义脚本会创建并插入可执行 script 元素，见 `user/src/utils/customScripts.ts:100`。线上当前 `scripts=[]`，应继续保持空。2026-07-18 发现当前 Vue 多语言运行时会通过 `new Function` 编译消息；禁止 CSP `'unsafe-eval'` 会使商店和后台白屏，因此线上暂时保留 `'unsafe-eval'`。这弱化了 CSP 的 XSS 缓解能力。
 
-完成标准：后端保存时清洗富文本、前端渲染时使用 DOMPurify；限制自定义脚本权限和使用场景；安全头生效后，用允许列表重新评估确有必要的第三方脚本。
+完成标准：后端保存时清洗富文本、前端渲染时使用 DOMPurify；限制自定义脚本权限和使用场景；将 locale 消息预编译为不需要运行时编译的构建产物后移除 `'unsafe-eval'`；安全头仅允许本站、API 和经批准的 Turnstile 域名。
 
 ### P1-4 缺少生产浏览器 E2E 门禁
 
@@ -201,6 +213,7 @@ Compose 提供服务健康检查，但未声明备份、异地存储、监控或
 | 后台 `pnpm build` | 通过 |
 | 公网 HTTPS：商店、后台、API health | 均返回 200 |
 | 公开支持邮箱 | `/api/v1/public/config` 返回 `support@socialgurushub.com` |
+| 外部注册与找回密码 | Gmail 已完成 Turnstile、验证码、注册、登录和找回密码；白名单已关闭，Outlook 未单独执行（项目方接受） |
 | 公网安全头 | 三域返回 CSP、Permissions-Policy 和预期 framing 策略；后台/API 为 `DENY` |
 | 商店 sitemap / robots | 分别返回 XML 与纯文本，robots 指向正式域名 sitemap |
 | API CORS（商店 origin） | 返回指定 origin 和 credentials |
@@ -211,7 +224,7 @@ Compose 提供服务健康检查，但未声明备份、异地存储、监控或
 
 ## 建议执行顺序
 
-1. 保持测试期邮箱白名单；在公开上线前移除该限制，完成 Gmail/Outlook 注册与找回密码验收。
+1. 在 staging 上完成供应商目录、价格、库存和受控履约验收后再上架商品。
 2. 确定 SSR/prerender 的 SEO 方案；自然搜索为主要获客渠道时，将 P1-2 升为 P0。
-3. 在 staging 上完成供应商目录、价格、库存和受控履约验收后再上架商品。
+3. 消除前后台 locale 运行时编译对 CSP `'unsafe-eval'` 的依赖，并完成富文本/自定义脚本 XSS 加固。
 4. 归档备份、恢复、监控、生产浏览器 E2E 与切换演练的证据；取得证书自动续期证据后再决定是否启用 HSTS。
