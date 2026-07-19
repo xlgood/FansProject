@@ -20,6 +20,73 @@ before applying this day-to-day operations runbook.
 
 ## Paths And Inputs
 
+## Verified VPS Topology (2026-07-19)
+
+This section records the production VPS paths verified by the project owner.
+Use these exact paths for future operational instructions unless the owner
+explicitly reports that the VPS layout changed. Do not infer a nested source
+path under `FansProject`.
+
+| Purpose | Verified production path / value |
+| --- | --- |
+| Deployment/document repository | `/srv/target-site/FansProject` |
+| Backend Git repository | `/srv/target-site/dujiao-next` |
+| User storefront Git repository | `/srv/target-site/user` |
+| Admin frontend Git repository | `/srv/target-site/admin` |
+| Compose working directory | `/srv/target-site/FansProject/ops/compose` |
+| Compose file | `/srv/target-site/FansProject/ops/compose/docker-compose.production.yml` |
+| Compose environment file | `/etc/target-site/compose.env` |
+| Backend protected configuration | `/etc/target-site/config.yml` |
+| Main storefront | `https://socialgurushub.com` |
+| API | `https://api.socialgurushub.com` (container port `8080`) |
+| Admin | `https://admin.socialgurushub.com` (container port `8082`) |
+| Storefront container port | `8081` |
+
+The three application repositories are independent Git repositories, each on
+the `main` branch with its own `origin` remote. The deployment repository is
+also independent. Updating the backend or either frontend therefore requires
+pulling the corresponding sibling directory, not a non-existent path such as
+`/srv/target-site/FansProject/dujiao-next`.
+
+The canonical production Compose command prefix is:
+
+```bash
+cd /srv/target-site/FansProject/ops/compose
+docker compose --env-file /etc/target-site/compose.env -f docker-compose.production.yml
+```
+
+Do not use `/etc/socialgurushub/compose.env`; it is not the production
+environment file for this VPS.
+
+Current worker safety policy:
+
+- `worker` and `inventory-worker` remain stopped by default.
+- Do not include either worker in a normal API/storefront deployment.
+- Do not start either worker, run procurement, or create test orders unless the
+  project owner explicitly authorizes a controlled supplier fulfillment test.
+
+For a normal backend and storefront release, use the following verified order:
+
+```bash
+cd /srv/target-site/dujiao-next && git pull --ff-only origin main
+cd /srv/target-site/user && git pull --ff-only origin main
+cd /srv/target-site/FansProject/ops/compose
+docker compose --env-file /etc/target-site/compose.env -f docker-compose.production.yml up -d --build api user
+```
+
+The current BT Panel Nginx virtual-host configuration is external to Git. Its
+stable parent directories are:
+
+- `/www/server/panel/vhost/nginx/proxy/socialgurushub.com/`
+- `/www/server/panel/vhost/nginx/proxy/admin.socialgurushub.com/`
+- `/www/server/panel/vhost/nginx/proxy/api.socialgurushub.com/`
+- `/www/server/panel/vhost/nginx/snippets/`
+
+BT Panel can regenerate individual proxy file names. When changing a proxy
+rule, locate the current `*.conf` under the matching parent directory, preserve
+the security-header includes, then run `nginx -t`, reload Nginx, and verify all
+three public domains.
+
 Templates in this repository:
 
 - `ops/compose/docker-compose.production.yml`

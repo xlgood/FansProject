@@ -25,6 +25,10 @@
 - 宝塔反向代理规则中的 `location`/嵌套 `if` 若设置了 `add_header`，会阻断上层安全头继承；重新保存宝塔反向代理规则可能覆盖当前安全头 `include`，每次改动后必须重新执行 `nginx -t`、reload 与三域公网响应头检查。
 - HSTS 尚未启用。必须先获得三个正式子域证书自动续期可靠的证据，再单独评估是否启用；本项不能被误报为已完成。
 - 当前前后台 Vue 多语言运行时依赖 CSP 的 `script-src 'unsafe-eval'`；商店和后台还需允许 `https://challenges.cloudflare.com` 的 script/frame 以支持 Turnstile。此为临时兼容性放宽，不允许扩展为通配来源，后续必须改用预编译 locale 消息后移除 `unsafe-eval`。
+- VPS 已确认目录必须直接作为后续操作命令的依据：Git 仓库分别为 `/srv/target-site/dujiao-next`、`/srv/target-site/user`、`/srv/target-site/admin`；部署/Compose 仓库为 `/srv/target-site/FansProject`，Compose 工作目录为 `/srv/target-site/FansProject/ops/compose`。不要假设源码位于 `/srv/target-site/FansProject/` 下。
+- VPS Compose 唯一确认的环境文件为 `/etc/target-site/compose.env`，后端受保护配置为 `/etc/target-site/config.yml`；不得使用不存在的 `/etc/socialgurushub/compose.env`。
+- 正常前后台部署只允许重建明确指定的服务，例如 `api user`；`worker` 和 `inventory-worker` 默认保持停止，未经项目方明确授权不得启动、不得创建测试订单或触发供应商履约。
+- BT Panel Nginx 代理配置不在 Git 中，父目录为 `/www/server/panel/vhost/nginx/proxy/{socialgurushub.com,admin.socialgurushub.com,api.socialgurushub.com}/`，安全头片段位于 `/www/server/panel/vhost/nginx/snippets/`。宝塔可能重建具体代理文件名；每次改动必须重新检查三域安全响应头。
 
 ## 2026-07-17 支付渠道决策
 
