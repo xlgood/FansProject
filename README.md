@@ -60,6 +60,7 @@
 - `docs/33-launch-cutover-runbook.md`：最终上线切换、监控、回滚和上线当天操作时间线。
 - `docs/35-production-gap-remediation-plan-2026-07-15.md`：基于最新发布分支的生产上线差距、整改优先级和验收标准。
 - `docs/36-project-audit-2026-07-17.md`：最新项目审查报告与持久项目记忆，记录测试阶段商品未上架为预期策略及当前上线阻断项。
+- `docs/37-provider-catalog-content-sync.md`：FansGurus/TGX 商品资料同步、客户文案清洗、独立 worker 部署和验收规则。
 - `ops/init-production-local.sh`：复制生产配置模板到本地忽略目录 `deploy/production-local/`。
 - `ops/check-production-local.sh`：检查本地生产配置草稿并执行 Gate 1 审计。
 - `ops/bootstrap-production-host.sh`：生产或 staging 主机目录、仓库和配置模板初始化脚本。

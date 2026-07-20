@@ -86,6 +86,23 @@ services:
       - ${UPLOADS_PATH}:/app/uploads
       - ${LOGS_PATH}:/app/logs
 
+  catalog-content-worker:
+    profiles: ["catalog-content"]
+    image: target/dujiao-api:${APP_VERSION}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    command: ["./dujiao-api", "-mode", "catalog-content-worker"]
+    volumes:
+      - ${DUJIAO_CONFIG_PATH}:/app/config.yml:ro
+      - ${UPLOADS_PATH}:/app/uploads
+      - ${LOGS_PATH}:/app/logs
+
   user:
     build:
       context: ${USER_BUILD_CONTEXT}
