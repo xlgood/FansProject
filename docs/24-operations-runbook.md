@@ -65,13 +65,14 @@ Current worker safety policy:
 - Do not start either worker, run procurement, or create test orders unless the
   project owner explicitly authorizes a controlled supplier fulfillment test.
 
-For a normal backend and storefront release, use the following verified order:
+For a normal backend, storefront, and admin release, use the following verified order:
 
 ```bash
 cd /srv/target-site/dujiao-next && git pull --ff-only origin main
 cd /srv/target-site/user && git pull --ff-only origin main
+cd /srv/target-site/admin && git pull --ff-only origin main
 cd /srv/target-site/FansProject/ops/compose
-docker compose --env-file /etc/target-site/compose.env -f docker-compose.production.yml up -d --build api user
+docker compose --env-file /etc/target-site/compose.env -f docker-compose.production.yml up -d --build api user admin
 ```
 
 The current BT Panel Nginx virtual-host configuration is external to Git. Its
